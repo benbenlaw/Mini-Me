@@ -1,62 +1,66 @@
 package com.benbenlaw.minime.entity.renderer;
 
 import com.benbenlaw.minime.entity.MiniMeEntity;
-import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.model.PlayerModel;
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelLayers;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.model.player.PlayerModel;
+import net.minecraft.client.renderer.PlayerSkinRenderCache;
+import net.minecraft.client.renderer.entity.ArmorModelSet;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
-import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.client.resources.PlayerSkin;
-import net.minecraft.client.resources.SkinManager;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+import net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer;
+import net.minecraft.client.renderer.entity.layers.PlayerItemInHandLayer;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.UUID;
+public class MiniMeRenderer extends LivingEntityRenderer<MiniMeEntity, AvatarRenderState, PlayerModel> {
 
-@OnlyIn(Dist.CLIENT)
-public class MiniMeRenderer extends HumanoidMobRenderer<MiniMeEntity, PlayerModel<MiniMeEntity>> {
+    private static final float SCALE = 0.48F;
+
+    private final PlayerSkinRenderCache skinCache;
 
     public MiniMeRenderer(EntityRendererProvider.Context context) {
-        super(context, new PlayerModel<>(context.bakeLayer(ModelLayers.PLAYER), false), 0.5F
-        );
+        super(context, new PlayerModel(context.bakeLayer(ModelLayers.PLAYER), false), 0.3f);
+        this.skinCache = context.getPlayerSkinRenderCache();
+
+        this.addLayer(new HumanoidArmorLayer<>(
+                this,
+                ArmorModelSet.bake(ModelLayers.PLAYER_ARMOR, context.getModelSet(), part -> new PlayerModel(part, false)),
+                context.getEquipmentRenderer()
+        ));
+        this.addLayer(new PlayerItemInHandLayer<>(this));
     }
 
     @Override
-    public void render(MiniMeEntity entity, float entityYaw, float partialTicks, PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
-        super.render(entity, entityYaw, partialTicks, poseStack, buffer, packedLight);
+    public @NotNull AvatarRenderState createRenderState() {
+        return new AvatarRenderState();
     }
 
     @Override
-    public @NotNull ResourceLocation getTextureLocation(MiniMeEntity entity) {
+    public void extractRenderState(@NotNull MiniMeEntity entity, @NotNull AvatarRenderState state, float partialTick) {
+        super.extractRenderState(entity, state, partialTick);
+        HumanoidMobRenderer.extractHumanoidRenderState(entity, state, partialTick, this.itemModelResolver);
 
-        UUID uuid = entity.getOwnerUUID();
-        Minecraft mc = Minecraft.getInstance();
+        state.scale *= SCALE;
 
-        if (uuid == null) {
-            return DefaultPlayerSkin.getDefaultTexture();
-        }
+        state.skin = skinCache.getOrDefault(entity.getProfile()).playerSkin();
 
-        if (mc.getConnection() != null) {
-            PlayerInfo info = mc.getConnection().getPlayerInfo(uuid);
+        state.rightArmPose = entity.getMainHandItem().isEmpty() ? HumanoidModel.ArmPose.EMPTY : HumanoidModel.ArmPose.ITEM;
+        state.leftArmPose = entity.getOffhandItem().isEmpty() ? HumanoidModel.ArmPose.EMPTY : HumanoidModel.ArmPose.ITEM;
 
-            if (info != null) {
-                PlayerSkin skin = info.getSkin();
-                return skin.texture();
-            }
-        }
-
-        return DefaultPlayerSkin.get(uuid).texture();
+        state.showHat = true;
+        state.showJacket = true;
+        state.showLeftPants = true;
+        state.showRightPants = true;
+        state.showLeftSleeve = true;
+        state.showRightSleeve = true;
+        state.showCape = false;
     }
 
     @Override
-    protected void scale(MiniMeEntity entity, PoseStack poseStack, float partialTick) {
-        poseStack.scale(0.5F, 0.5F, 0.5F);
+    public @NotNull Identifier getTextureLocation(AvatarRenderState state) {
+        return state.skin.body().texturePath();
     }
 }

@@ -1,14 +1,11 @@
-//import net.darkhax.curseforgegradle.TaskPublishCurseForge
-
 plugins {
     id 'java-library'
     id 'eclipse'
     id 'idea'
     id 'maven-publish'
-    id 'net.neoforged.gradle.userdev' version '7.0.165'
+    id 'net.neoforged.moddev' version '2.0.140'
     id 'net.darkhax.curseforgegradle' version '1.1.24'
     id "com.modrinth.minotaur" version "2.+"
-
 }
 
 version = "${minecraft_version}-${mod_version}"
@@ -24,57 +21,62 @@ repositories {
             includeGroup("curse.maven")
         }
     }
+
+    maven {
+        name = "Jared's maven"
+        url = "https://maven.blamejared.com/"
+    }
+    maven {
+        name = "ModMaven"
+        url = "https://modmaven.dev"
+    }
 }
 base {
     archivesName = mod_id
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
-minecraft {
-    accessTransformers {
-        file('src/main/resources/META-INF/accesstransformer.cfg')
+
+neoForge {
+    version = project.neo_version
+
+    runs {
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            systemProperty 'forge.logging.console.level', 'debug'
+        }
+
+        client {
+            client()
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        server {
+            server()
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            programArgument '--nogui'
+        }
+
+        clientData {
+            clientData()
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
     }
-}
 
-
-runs {
-    configureEach {
-        systemProperty 'forge.logging.markers', 'REGISTRIES'
-        systemProperty 'forge.logging.console.level', 'debug'
-        modSource project.sourceSets.main
-    }
-
-    client {
-        systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
-    }
-
-    server {
-        systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
-        arguments '--nogui'  // change here
-    }
-    gameTestServer {
-        systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
-    }
-
-    data {
-        arguments '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+    mods {
+        "${mod_id}" {
+            sourceSet sourceSets.main
+        }
     }
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
-configurations {
-    runtimeClasspath.extendsFrom localRuntime
-}
-
-
 dependencies {
 
-    implementation "net.neoforged:neoforge:${neo_version}"
-
-    implementation "curse.maven:jei-238222:6614392" // JEI
-
+    //JEI
+    implementation("mezz.jei:jei-${jei_mc_version}-neoforge:${jei_version}")
 }
 
 tasks.withType(ProcessResources).configureEach {
@@ -129,45 +131,3 @@ idea {
         downloadJavadoc = true
     }
 }
-
-/*
-
-tasks.register('publishCurseForge', TaskPublishCurseForge) {
-    group "modpublishing"
-
-    apiToken = System.getenv("curseforge_token").toString()
-
-    def projectId = 1352211
-    def mainFile = upload(projectId, jar)
-
-    mainFile.changelog = changelog
-    mainFile.addOptional("jei") // JEI
-    mainFile.releaseType = "release"
-    mainFile.gameVersions.addAll(minecraft_version)
-    mainFile.addEnvironment("server", "client")
-}
-
-tasks.getByName("modrinth").setGroup("modpublishing")
-
-modrinth {
-    token = System.getenv("modrinth_token").toString()
-    projectId = "g69ApBz2"
-    versionType = "release"
-    versionName = "routers-" + "$minecraft_version" + "-" + "$mod_version"
-    uploadFile = jar // With Loom, this MUST be set to `remapJar` instead of `jar`!
-
-    gameVersions.addAll(minecraft_version)
-
-    loaders = ["neoforge"]
-    changelog = project.changelog
-    dependencies {
-        optional.project "jei"
-    }
-}
-
- */
-
-
-
-
-

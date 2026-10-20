@@ -2,6 +2,8 @@ package com.benbenlaw.minime.entity;
 
 import com.benbenlaw.minime.MiniMe;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -15,7 +17,7 @@ public class MMEntities {
     public static final Supplier<EntityType<MiniMeEntity>> MINI_ME =
             ENTITIES.register("mini_me", () ->
                     EntityType.Builder.of(MiniMeEntity::new, MobCategory.CREATURE)
-                            .sized(0.5f, 1.0f)
-                            .build("mini_me")
+                            .sized(0.5f, 0.9f)
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, Identifier.fromNamespaceAndPath(MiniMe.MOD_ID, "mini_me")))
             );
 }

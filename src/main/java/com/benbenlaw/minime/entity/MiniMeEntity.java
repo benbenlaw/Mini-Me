@@ -1,16 +1,10 @@
 package com.benbenlaw.minime.entity;
 
-import com.benbenlaw.minime.entity.goals.CollectLootGoal;
-import com.benbenlaw.minime.entity.goals.DumpInventoryGoal;
-import com.benbenlaw.minime.entity.goals.ReturnHomeGoal;
-import com.benbenlaw.minime.entity.goals.SwordAttackGoal;
+import com.benbenlaw.minime.config.MiniMeConfig;
+import com.benbenlaw.minime.entity.goals.*;
 import com.benbenlaw.minime.screen.MiniMeMenu;
-import com.mojang.authlib.properties.PropertyMap;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.NbtUtils;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -18,75 +12,296 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.util.StringUtil;
-import net.minecraft.world.*;
-import net.minecraft.world.Container;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Util;
+import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.Containers;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.HasCustomInventoryScreen;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.ai.goal.*;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
-public class MiniMeEntity extends PathfinderMob implements ContainerListener, HasCustomInventoryScreen {
+public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScreen {
 
-    private SimpleContainer inventory = new SimpleContainer(21);
-    private int actionCooldown = 0;
+    public static final int HEAD_SLOT = 0;
+    public static final int CHEST_SLOT = 1;
+    public static final int LEGS_SLOT = 2;
+    public static final int BOOTS_SLOT = 3;
+    public static final int MAIN_HAND = 4;
+    public static final int OFF_HAND = 5;
+    public static final int FIRST_STORAGE_SLOT = 6;
+    private static final int MAX_REPLANT_SPOTS = 16;
+    private static final int TASK_PRIORITY_BASE = 2;
+
+    private static final EntityDataAccessor<ResolvableProfile> DATA_PROFILE =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.RESOLVABLE_PROFILE);
+
+    private static final EntityDataAccessor<String> DATA_TASKS =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.STRING);
+
+    private static final EntityDataAccessor<Integer> DATA_QUARRY_WIDTH =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.INT);
+
+    private static final EntityDataAccessor<Boolean> DATA_SHOW_AREA =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.BOOLEAN);
+
+    private final SimpleContainer inventory = new SimpleContainer(21) {
+        @Override
+        public void setChanged() {
+            super.setChanged();
+            MiniMeEntity.this.syncEquipmentFromInventory();
+        }
+    };
+
+    private Map<MiniMeTask, Goal> taskGoals;
+    private String cachedTasksRaw;
+    private List<TaskSetting> cachedTasks;
+
     private BlockPos homePos;
-    private int homeRadius = 8;
+    private int blocksMinedSinceDump;
+    private int homeRadius = MiniMeConfig.DEFAULT_HOME_RADIUS.get();
 
-    public static int HEAD_SLOT = 0;
-    public static int CHEST_SLOT = 1;
-    public static int LEGS_SLOT = 2;
-    public static int BOOTS_SLOT = 3;
-    public static int MAIN_HAND = 4;
-    public static int OFF_HAND = 5;
-
-    private static final EntityDataAccessor<ItemStack> DATA_HEAD = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
-    private static final EntityDataAccessor<ItemStack> DATA_CHEST = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
-    private static final EntityDataAccessor<ItemStack> DATA_LEGS = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
-    private static final EntityDataAccessor<ItemStack> DATA_BOOTS = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
-
-    private static final EntityDataAccessor<ItemStack> DATA_MAIN_HAND = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
-    private static final EntityDataAccessor<ItemStack> DATA_OFF_HAND = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
-
-
-
-    private static final EntityDataAccessor<Optional<UUID>> DATA_OWNER_UUID = SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.OPTIONAL_UUID);
+    private final List<ReplantSpot> replantSpots = new ArrayList<>();
 
     public MiniMeEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
-        this.createInventory();
         this.setCanPickUpLoot(true);
     }
 
     @Override
     protected void registerGoals() {
+        goalSelector.addGoal(1, new FloatGoal(this));
 
-        this.goalSelector.addGoal(1, new FloatGoal(this));
-        this.goalSelector.addGoal(2, new SwordAttackGoal(this, 1.0D, true));
-        this.goalSelector.addGoal(3, new CollectLootGoal(this));
-        this.goalSelector.addGoal(4, new ReturnHomeGoal(this));
-        this.goalSelector.addGoal(5, new DumpInventoryGoal(this));
-        this.goalSelector.addGoal(6, new RandomStrollGoal(this, 0.7D));
-        this.goalSelector.addGoal(7, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
+        taskGoals = new EnumMap<>(MiniMeTask.class);
+        taskGoals.put(MiniMeTask.COMBAT, new SwordAttackGoal(this, 1.0D, true));
+        taskGoals.put(MiniMeTask.CHOP_TREES, new ChopTreeGoal(this));
+        taskGoals.put(MiniMeTask.REPLANT, new ReplantSaplingGoal(this));
+        taskGoals.put(MiniMeTask.SHEAR, new ShearMobsGoal(this));
+        taskGoals.put(MiniMeTask.MINE, new MineQuarryGoal(this));
+        taskGoals.put(MiniMeTask.COLLECT, new CollectLootGoal(this));
+        taskGoals.put(MiniMeTask.DUMP, new DumpInventoryGoal(this));
 
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Monster.class, true));
+        List<TaskSetting> settings = getTaskSettings();
+        for (int i = 0; i < settings.size(); i++) {
+            goalSelector.addGoal(TASK_PRIORITY_BASE + i, taskGoals.get(settings.get(i).task()));
+        }
 
+        int after = TASK_PRIORITY_BASE + MiniMeTask.values().length;
+        goalSelector.addGoal(after, new ReturnHomeGoal(this));
+        goalSelector.addGoal(after + 1, new RandomStrollGoal(this, 0.7D));
+        goalSelector.addGoal(after + 2, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        goalSelector.addGoal(after + 3, new RandomLookAroundGoal(this));
+
+        targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Monster.class, true) {
+            @Override
+            public boolean canUse() {
+                return isTaskEnabled(MiniMeTask.COMBAT) && super.canUse();
+            }
+        });
+    }
+
+    private static String defaultTasks() {
+        List<TaskSetting> settings = new ArrayList<>();
+        for (MiniMeTask task : MiniMeTask.values()) settings.add(new TaskSetting(task, true));
+        return encodeTasks(settings);
+    }
+
+    public record TaskSetting(MiniMeTask task, boolean enabled) {
+    }
+
+    public List<TaskSetting> getTaskSettings() {
+        String raw = this.entityData.get(DATA_TASKS);
+        if (!raw.equals(cachedTasksRaw)) {
+            cachedTasks = parseTasks(raw);
+            cachedTasksRaw = raw;
+        }
+        return cachedTasks;
+    }
+
+    public boolean isTaskEnabled(MiniMeTask task) {
+        for (TaskSetting setting : getTaskSettings()) {
+            if (setting.task() == task) return setting.enabled();
+        }
+        return false;
+    }
+
+    public void toggleTask(int index) {
+        List<TaskSetting> settings = new ArrayList<>(getTaskSettings());
+        if (index < 0 || index >= settings.size()) return;
+
+        TaskSetting old = settings.get(index);
+        settings.set(index, new TaskSetting(old.task(), !old.enabled()));
+        applyTaskSettings(settings);
+    }
+
+    public boolean isTaskApplicable(MiniMeTask task) {
+        return task.isUsableWith(getMainHandItem());
+    }
+
+    public void moveTask(int index, int direction) {
+        List<TaskSetting> settings = new ArrayList<>(getTaskSettings());
+        if (index < 0 || index >= settings.size() || direction == 0) return;
+
+        int step = direction > 0 ? 1 : -1;
+        int target = index + step;
+        while (target >= 0 && target < settings.size() && !isTaskApplicable(settings.get(target).task())) {
+            target += step;
+        }
+        if (target < 0 || target >= settings.size()) return;
+
+        TaskSetting moved = settings.remove(index);
+        settings.add(target, moved);
+        applyTaskSettings(settings);
+    }
+
+    private void applyTaskSettings(List<TaskSetting> settings) {
+        this.entityData.set(DATA_TASKS, encodeTasks(settings));
+        rebuildTaskGoals();
+    }
+
+    private void rebuildTaskGoals() {
+        if (taskGoals == null) return;
+
+        List<TaskSetting> settings = getTaskSettings();
+        for (int i = 0; i < settings.size(); i++) {
+            Goal goal = taskGoals.get(settings.get(i).task());
+            goalSelector.removeGoal(goal);
+            goalSelector.addGoal(TASK_PRIORITY_BASE + i, goal);
+        }
+    }
+
+    private static String encodeTasks(List<TaskSetting> settings) {
+        StringBuilder builder = new StringBuilder();
+        for (TaskSetting setting : settings) {
+            if (!builder.isEmpty()) builder.append(',');
+            builder.append(setting.task().name()).append(':').append(setting.enabled() ? '1' : '0');
+        }
+        return builder.toString();
+    }
+
+    private static List<TaskSetting> parseTasks(String raw) {
+        List<TaskSetting> settings = new ArrayList<>();
+        Set<MiniMeTask> seen = EnumSet.noneOf(MiniMeTask.class);
+
+        for (String part : raw.split(",")) {
+            String[] pieces = part.split(":");
+            if (pieces.length != 2) continue;
+            try {
+                MiniMeTask task = MiniMeTask.valueOf(pieces[0]);
+                if (seen.add(task)) settings.add(new TaskSetting(task, pieces[1].equals("1")));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        for (MiniMeTask task : MiniMeTask.values()) {
+            if (seen.add(task)) settings.add(new TaskSetting(task, true));
+        }
+        return settings;
+    }
+
+    public boolean isShowingArea() {
+        return this.entityData.get(DATA_SHOW_AREA);
+    }
+
+    public void setShowingArea(boolean showing) {
+        this.entityData.set(DATA_SHOW_AREA, showing);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+
+        if (this.level() instanceof ServerLevel serverLevel && homePos != null && isShowingArea() && this.tickCount % 10 == 0) {
+            showArea(serverLevel);
+        }
+    }
+
+    private void showQuarry(ServerLevel level) {
+        BlockPos min = getQuarryMin();
+        int width = getQuarryWidth();
+        double y = homePos.getY() + 0.1;
+
+        for (int i = 0; i <= width; i++) {
+            level.sendParticles(ParticleTypes.CRIT, min.getX() + i, y, min.getZ(), 1, 0, 0, 0, 0);
+            level.sendParticles(ParticleTypes.CRIT, min.getX() + i, y, min.getZ() + width, 1, 0, 0, 0, 0);
+            level.sendParticles(ParticleTypes.CRIT, min.getX(), y, min.getZ() + i, 1, 0, 0, 0, 0);
+            level.sendParticles(ParticleTypes.CRIT, min.getX() + width, y, min.getZ() + i, 1, 0, 0, 0, 0);
+        }
+    }
+
+    private void showArea(ServerLevel level) {
+        double cx = homePos.getX() + 0.5;
+        double cz = homePos.getZ() + 0.5;
+        double y = homePos.getY() + 1.0;
+
+        int points = Math.max(16, (int) (2 * Math.PI * homeRadius));
+        for (int i = 0; i < points; i++) {
+            double angle = 2 * Math.PI * i / points;
+            level.sendParticles(ParticleTypes.HAPPY_VILLAGER,
+                    cx + Math.cos(angle) * homeRadius, y, cz + Math.sin(angle) * homeRadius,
+                    1, 0, 0, 0, 0);
+        }
+
+        for (int i = 0; i < 6; i++) {
+            level.sendParticles(ParticleTypes.END_ROD, cx, y + i * 0.5, cz, 1, 0, 0, 0, 0);
+        }
+
+        if (isTaskEnabled(MiniMeTask.MINE) && isTaskApplicable(MiniMeTask.MINE)) {
+            showQuarry(level);
+        }
+    }
+
+    public record ReplantSpot(BlockPos pos, @Nullable Item preferred) {
+    }
+
+    public List<ReplantSpot> getReplantSpots() {
+        return replantSpots;
+    }
+
+    public void queueReplant(BlockPos pos, @Nullable Item preferred) {
+        if (replantSpots.size() >= MAX_REPLANT_SPOTS) return;
+        for (ReplantSpot spot : replantSpots) {
+            if (spot.pos().equals(pos)) return;
+        }
+        replantSpots.add(new ReplantSpot(pos.immutable(), preferred));
     }
 
     public SimpleContainer getInventory() {
@@ -94,71 +309,97 @@ public class MiniMeEntity extends PathfinderMob implements ContainerListener, Ha
     }
 
     @Override
-    protected void pickUpItem(ItemEntity itemEntity) {
-        ItemStack stackToPickup = itemEntity.getItem().copy();
+    protected void pickUpItem(ServerLevel level, ItemEntity itemEntity) {
+        ItemStack stack = itemEntity.getItem();
+        int before = stack.getCount();
 
-        for (int i = 6; i < this.inventory.getContainerSize(); i++) {
-            ItemStack slot = this.inventory.getItem(i);
+        ItemStack remainder = insertIntoStorage(stack);
+        if (remainder.getCount() == before) return; // nothing fitted
 
-            if (!slot.isEmpty() && ItemStack.isSameItemSameComponents(slot, stackToPickup)) {
-                int availableSpace = slot.getMaxStackSize() - slot.getCount();
-                if (availableSpace > 0) {
-                    int toAdd = Math.min(availableSpace, stackToPickup.getCount());
-                    slot.grow(toAdd);
-                    stackToPickup.shrink(toAdd);
-                    this.inventory.setChanged();
+        this.playSound(SoundEvents.ITEM_PICKUP);
+        if (remainder.isEmpty()) {
+            itemEntity.discard();
+        } else {
+            itemEntity.setItem(remainder);
+        }
+    }
 
-                    if (stackToPickup.isEmpty()) {
-                        itemEntity.discard();
-                        this.makeSound(SoundEvents.ITEM_PICKUP);
-                        return;
-                    }
+    public ItemStack insertIntoStorage(ItemStack stack) {
+        ItemStack remaining = stack.copy();
+
+        for (int i = FIRST_STORAGE_SLOT; i < inventory.getContainerSize() && !remaining.isEmpty(); i++) {
+            ItemStack slot = inventory.getItem(i);
+            if (!slot.isEmpty() && ItemStack.isSameItemSameComponents(slot, remaining)) {
+                int move = Math.min(slot.getMaxStackSize() - slot.getCount(), remaining.getCount());
+                if (move > 0) {
+                    slot.grow(move);
+                    remaining.shrink(move);
                 }
             }
         }
 
-        for (int i = 6; i < this.inventory.getContainerSize(); i++) {
-            ItemStack slot = this.inventory.getItem(i);
-
-            if (slot.isEmpty()) {
-                int toAdd = Math.min(stackToPickup.getCount(), stackToPickup.getMaxStackSize());
-                ItemStack newStack = stackToPickup.copy();
-                newStack.setCount(toAdd);
-                this.inventory.setItem(i, newStack);
-                stackToPickup.shrink(toAdd);
-                this.inventory.setChanged();
-
-                if (stackToPickup.isEmpty()) {
-                    this.makeSound(SoundEvents.ITEM_PICKUP);
-                    itemEntity.discard();
-                    return;
-                }
+        for (int i = FIRST_STORAGE_SLOT; i < inventory.getContainerSize() && !remaining.isEmpty(); i++) {
+            if (inventory.getItem(i).isEmpty()) {
+                int move = Math.min(remaining.getCount(), remaining.getMaxStackSize());
+                inventory.setItem(i, remaining.copyWithCount(move));
+                remaining.shrink(move);
             }
         }
 
-        itemEntity.setItem(stackToPickup);
+        inventory.setChanged();
+        return remaining;
+    }
+
+    public boolean hasStorageSpace() {
+        for (int i = FIRST_STORAGE_SLOT; i < inventory.getContainerSize(); i++) {
+            if (inventory.getItem(i).isEmpty()) return true;
+        }
+        return false;
+    }
+
+    public void noteBlockMined() {
+        blocksMinedSinceDump++;
+    }
+
+    public void resetMinedCount() {
+        blocksMinedSinceDump = 0;
+    }
+
+    public boolean shouldDumpMinedItems() {
+        int every = MiniMeConfig.MINING_DUMP_EVERY.get();
+        if (every <= 0 || blocksMinedSinceDump < every) return false;
+
+        return isTaskEnabled(MiniMeTask.DUMP) && MiniMeConfig.DUMP_TO_CHEST.get() && findChestNearHome() != null;
+    }
+
+    public int getQuarryWidthSetting() {
+        return this.entityData.get(DATA_QUARRY_WIDTH);
+    }
+
+    public int getQuarryWidth() {
+        return Math.max(1, Math.min(getQuarryWidthSetting(), 2 * homeRadius + 1));
+    }
+
+    public void changeQuarryWidth(int delta) {
+        int max = Math.max(1, Math.min(MiniMeConfig.MAX_QUARRY_WIDTH.get(), 2 * homeRadius + 1));
+        this.entityData.set(DATA_QUARRY_WIDTH, Math.max(1, Math.min(getQuarryWidthSetting() + delta, max)));
+    }
+
+    @Nullable
+    public BlockPos getQuarryMin() {
+        if (homePos == null) return null;
+        int offset = (getQuarryWidth() - 1) / 2;
+        return new BlockPos(homePos.getX() - offset, homePos.getY() - 1, homePos.getZ() - offset);
     }
 
     @Override
-    public boolean wantsToPickUp(ItemStack stack) {
+    public boolean wantsToPickUp(ServerLevel level, ItemStack stack) {
         return true;
-    }
-
-    @Override
-    public void tick() {
-        super.tick();
-
-        if (level().isClientSide()) return; // Only run AI server-side
-
-        if (actionCooldown > 0) {
-            actionCooldown--;
-            return;
-        }
     }
 
     @Override
     public boolean canPickUpLoot() {
-        return true;
+        return MiniMeConfig.COLLECT_ITEMS.get();
     }
 
     public void setHome(BlockPos pos, int radius) {
@@ -182,32 +423,29 @@ public class MiniMeEntity extends PathfinderMob implements ContainerListener, Ha
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(DATA_HEAD, ItemStack.EMPTY);
-        builder.define(DATA_CHEST, ItemStack.EMPTY);
-        builder.define(DATA_LEGS, ItemStack.EMPTY);
-        builder.define(DATA_BOOTS, ItemStack.EMPTY);
-        builder.define(DATA_MAIN_HAND, ItemStack.EMPTY);
-        builder.define(DATA_OFF_HAND, ItemStack.EMPTY);
-        builder.define(DATA_OWNER_UUID, Optional.empty());
+        builder.define(DATA_PROFILE, ResolvableProfile.createUnresolved(Util.NIL_UUID));
+        builder.define(DATA_SHOW_AREA, false);
+        builder.define(DATA_TASKS, defaultTasks());
+        builder.define(DATA_QUARRY_WIDTH, 5);
     }
 
     @Override
-    protected void dropAllDeathLoot(ServerLevel level, DamageSource sourse) {
+    protected void dropAllDeathLoot(@NotNull ServerLevel level, @NotNull DamageSource source) {
         Containers.dropContents(level, this.blockPosition(), this.inventory);
     }
 
-    @Override
-    public @NotNull ItemStack getMainHandItem() {
-        return this.entityData.get(DATA_MAIN_HAND);
-    }
-
     public void setOwnerUUID(@Nullable UUID uuid) {
-        this.entityData.set(DATA_OWNER_UUID, Optional.ofNullable(uuid));
+        this.entityData.set(DATA_PROFILE, ResolvableProfile.createUnresolved(uuid == null ? Util.NIL_UUID : uuid));
     }
 
     @Nullable
     public UUID getOwnerUUID() {
-        return this.entityData.get(DATA_OWNER_UUID).orElse(null);
+        UUID id = getProfile().partialProfile().id();
+        return Util.NIL_UUID.equals(id) ? null : id;
+    }
+
+    public ResolvableProfile getProfile() {
+        return this.entityData.get(DATA_PROFILE);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -218,17 +456,13 @@ public class MiniMeEntity extends PathfinderMob implements ContainerListener, Ha
                 .add(Attributes.FOLLOW_RANGE, 32.0D);
     }
 
-    public boolean hasInventoryChanged(Container inventory) {
-        return this.inventory != inventory;
-    }
-
     @Override
     protected @NotNull InteractionResult mobInteract(@NotNull Player player, @NotNull InteractionHand hand) {
         if (!this.level().isClientSide()) {
 
             if (player.isShiftKeyDown()) {
-                this.setHome(this.blockPosition(), 8);
-                player.displayClientMessage(Component.literal("MiniMe home set!"), true);
+                this.setHome(this.blockPosition(), MiniMeConfig.DEFAULT_HOME_RADIUS.get());
+                player.sendOverlayMessage(Component.literal("MiniMe home set!"));
                 this.playSound(SoundEvents.LEVER_CLICK, 1.0F, 1.0F);
                 return InteractionResult.CONSUME;
             }
@@ -247,8 +481,8 @@ public class MiniMeEntity extends PathfinderMob implements ContainerListener, Ha
                 player.closeContainer();
             }
 
-            serverPlayer.openMenu(new SimpleMenuProvider((ix, playerInventory, playerEntityx) ->
-                    new MiniMeMenu(ix, playerInventory, this.inventory, this), this.getDisplayName()), buf -> {
+            serverPlayer.openMenu(new SimpleMenuProvider((containerId, playerInventory, p) ->
+                    new MiniMeMenu(containerId, playerInventory, this.inventory, this), this.getDisplayName()), buf -> {
                 buf.writeUUID(getUUID());
             });
         }
@@ -281,7 +515,7 @@ public class MiniMeEntity extends PathfinderMob implements ContainerListener, Ha
 
         boolean hasItems = false;
 
-        for (int i = 3; i < this.inventory.getContainerSize(); i++) {
+        for (int i = FIRST_STORAGE_SLOT; i < this.inventory.getContainerSize(); i++) {
             ItemStack stack = this.inventory.getItem(i);
             if (!stack.isEmpty()) {
                 hasItems = true;
@@ -312,104 +546,79 @@ public class MiniMeEntity extends PathfinderMob implements ContainerListener, Ha
         if (hasItems) {
             chest.setChanged();
             this.inventory.setChanged();
-            this.playSound(SoundEvents.CHEST_CLOSE, 1.0F, 1.0F);
         }
 
     }
 
-    @Override
-    public void containerChanged(Container inventory) {
-        this.setItemSlot(EquipmentSlot.MAINHAND, inventory.getItem(MAIN_HAND));
-        this.setItemSlot(EquipmentSlot.OFFHAND, inventory.getItem(OFF_HAND));
+    public boolean setChestOpen(BlockPos pos, boolean open) {
+        BlockState state = level().getBlockState(pos);
+        if (!(state.getBlock() instanceof ChestBlock)) return false;
+
+        level().blockEvent(pos, state.getBlock(), 1, open ? 1 : 0);
+        if (state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+            level().blockEvent(pos.relative(ChestBlock.getConnectedDirection(state)), state.getBlock(), 1, open ? 1 : 0);
+        }
+
+        level().playSound(null, pos, open ? SoundEvents.CHEST_OPEN : SoundEvents.CHEST_CLOSE, SoundSource.BLOCKS,
+                0.5F, level().getRandom().nextFloat() * 0.1F + 0.9F);
+        return true;
+    }
+
+    private void syncEquipmentFromInventory() {
+        if (this.level().isClientSide()) return;
+
         this.setItemSlot(EquipmentSlot.HEAD, inventory.getItem(HEAD_SLOT));
         this.setItemSlot(EquipmentSlot.CHEST, inventory.getItem(CHEST_SLOT));
         this.setItemSlot(EquipmentSlot.LEGS, inventory.getItem(LEGS_SLOT));
         this.setItemSlot(EquipmentSlot.FEET, inventory.getItem(BOOTS_SLOT));
+        this.setItemSlot(EquipmentSlot.MAINHAND, inventory.getItem(MAIN_HAND));
+        this.setItemSlot(EquipmentSlot.OFFHAND, inventory.getItem(OFF_HAND));
     }
 
     @Override
-    public @NotNull ItemStack getItemBySlot(@NotNull EquipmentSlot slot) {
-        return switch (slot) {
-            case MAINHAND -> getInventory().getItem(MAIN_HAND);
-            case OFFHAND -> getInventory().getItem(OFF_HAND);
-            case HEAD -> getInventory().getItem(HEAD_SLOT);
-            case CHEST -> getInventory().getItem(CHEST_SLOT);
-            case LEGS -> getInventory().getItem(LEGS_SLOT);
-            case FEET -> getInventory().getItem(BOOTS_SLOT);
-            default -> super.getItemBySlot(slot);
-        };
-    }
+    protected void addAdditionalSaveData(@NotNull ValueOutput output) {
+        super.addAdditionalSaveData(output);
 
-    @Override
-    public void addAdditionalSaveData(@NotNull CompoundTag pCompound) {
-        super.addAdditionalSaveData(pCompound);
-
-        ListTag listtag = new ListTag();
-        for (int x = 0; x < this.inventory.getContainerSize(); x++) {
-            ItemStack itemstack = this.inventory.getItem(x);
-            if (!itemstack.isEmpty()) {
-                CompoundTag compoundtag = new CompoundTag();
-                compoundtag.putByte("Slot", (byte)(x));
-                listtag.add(itemstack.save(this.registryAccess(), compoundtag));
-            }
-        }
+        ContainerHelper.saveAllItems(output, this.inventory.getItems());
 
         if (homePos != null) {
-            NbtUtils.writeBlockPos(homePos);
+            output.store("HomePos", BlockPos.CODEC, homePos);
+            output.putInt("HomeRadius", homeRadius);
         }
 
-        UUID uuid = getOwnerUUID();
-        if (uuid != null) {
-            pCompound.putUUID("OwnerUUID", uuid);
-        }
-
-        pCompound.put("Items", listtag);
+        output.store("Profile", ResolvableProfile.CODEC, getProfile());
+        output.putString("Tasks", this.entityData.get(DATA_TASKS));
+        output.putInt("QuarryWidth", getQuarryWidthSetting());
     }
 
     @Override
-    public void readAdditionalSaveData(@NotNull CompoundTag pCompound) {
-        super.readAdditionalSaveData(pCompound);
+    protected void readAdditionalSaveData(@NotNull ValueInput input) {
+        super.readAdditionalSaveData(input);
 
-        this.createInventory();
-        ListTag listtag = pCompound.getList("Items", 10);
+        this.inventory.clearContent();
+        ContainerHelper.loadAllItems(input, this.inventory.getItems());
+        this.syncEquipmentFromInventory();
 
-        for (int x = 0; x < listtag.size(); x++) {
-            CompoundTag compoundtag = listtag.getCompound(x);
-            int j = compoundtag.getByte("Slot") & 255;
-            if (j < this.inventory.getContainerSize()) {
-                ItemStack stack = ItemStack.parse(this.registryAccess(), compoundtag).orElse(ItemStack.EMPTY);
-                this.inventory.setItem(j, stack);
+        this.homePos = input.read("HomePos", BlockPos.CODEC).orElse(null);
+        this.homeRadius = input.getIntOr("HomeRadius", MiniMeConfig.DEFAULT_HOME_RADIUS.get());
 
-            }
-        }
+        input.read("Profile", ResolvableProfile.CODEC).ifPresent(profile -> this.entityData.set(DATA_PROFILE, profile));
 
-        if (pCompound.contains("HomePos")) {
-            this.homePos = NbtUtils.readBlockPos(pCompound, "HomePos").orElse(null);
-        }
-
-        if (pCompound.hasUUID("OwnerUUID")) {
-            setOwnerUUID(pCompound.getUUID("OwnerUUID"));
-        }
+        input.getString("Tasks").ifPresent(tasks -> applyTaskSettings(parseTasks(tasks)));
+        this.entityData.set(DATA_QUARRY_WIDTH, Math.max(1, input.getIntOr("QuarryWidth", 5)));
     }
 
-    public void createInventory() {
-        SimpleContainer old = this.inventory;
-        this.inventory = new SimpleContainer(21);
+    public MiniMeMode getCurrentMode() {
+        ItemStack stack = getMainHandItem();
 
-        if (old != null) {
-            old.removeListener(this);
-            int size = Math.min(old.getContainerSize(), this.inventory.getContainerSize());
+        if (stack.isEmpty()) return MiniMeMode.IDLE;
 
-            for (int i = 0; i < size; i++) {
-                ItemStack stack = old.getItem(i);
-                if (!stack.isEmpty()) {
-                    this.inventory.setItem(i, stack.copy());
-                }
-            }
-        }
+        if (stack.is(ItemTags.SWORDS)) return MiniMeMode.COMBAT;
+        if (stack.is(ItemTags.AXES)) return MiniMeMode.TREE_FARMING;
+        if (stack.is(ItemTags.PICKAXES)) return MiniMeMode.MINE;
+        if (stack.is(ItemTags.HOES)) return MiniMeMode.FARM;
 
-        this.inventory.addListener(this);
-
+        return MiniMeMode.COLLECT;
     }
 
 }

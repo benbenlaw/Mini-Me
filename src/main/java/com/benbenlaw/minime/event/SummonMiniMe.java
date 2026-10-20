@@ -1,17 +1,16 @@
 package com.benbenlaw.minime.event;
 
 import com.benbenlaw.minime.MiniMe;
+import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.entity.MMEntities;
 import com.benbenlaw.minime.entity.MiniMeEntity;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.level.BlockEvent;
 
 @EventBusSubscriber(modid = MiniMe.MOD_ID)
 public class SummonMiniMe {
@@ -24,11 +23,11 @@ public class SummonMiniMe {
 
         if (state.is(Blocks.PLAYER_HEAD) && belowState.is(Blocks.GOLD_BLOCK)) {
 
-            MiniMeEntity miniMe = MMEntities.MINI_ME.get().create(event.getLevel());
-            assert miniMe != null;
+            MiniMeEntity miniMe = MMEntities.MINI_ME.get().create(event.getLevel(), EntitySpawnReason.SPAWN_ITEM_USE);
+            if (miniMe == null) return;
 
             miniMe.setPos(pos.getX() + 0.5, pos.getY() - 1, pos.getZ() + 0.5);
-            miniMe.setHome(pos.below(), 8);
+            miniMe.setHome(pos.below(), MiniMeConfig.DEFAULT_HOME_RADIUS.get());
             miniMe.setOwnerUUID(event.getEntity().getUUID());
 
             double dx = event.getEntity().getX() - miniMe.getX();

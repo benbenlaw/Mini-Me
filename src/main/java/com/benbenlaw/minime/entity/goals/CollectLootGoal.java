@@ -1,23 +1,25 @@
 package com.benbenlaw.minime.entity.goals;
 
-import net.minecraft.world.entity.PathfinderMob;
+import com.benbenlaw.minime.config.MiniMeConfig;
+import com.benbenlaw.minime.entity.MiniMeEntity;
+import com.benbenlaw.minime.entity.MiniMeTask;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.item.ItemEntity;
 
 import java.util.EnumSet;
 
 public class CollectLootGoal extends Goal {
-    private final PathfinderMob miniMe;
+    private final MiniMeEntity miniMe;
     private ItemEntity targetItem;
 
-    public CollectLootGoal(PathfinderMob mob) {
+    public CollectLootGoal(MiniMeEntity mob) {
         this.miniMe = mob;
         this.setFlags(EnumSet.of(Goal.Flag.MOVE));
     }
 
     @Override
     public boolean canUse() {
-        if (!miniMe.canPickUpLoot()) return false;
+        if (!MiniMeConfig.COLLECT_ITEMS.get() || !miniMe.isTaskEnabled(MiniMeTask.COLLECT) || !miniMe.canPickUpLoot()) return false;
         if (miniMe.getTarget() != null) return false; // Don't loot while fighting
 
         double bestDistance = Double.MAX_VALUE;
@@ -25,7 +27,7 @@ public class CollectLootGoal extends Goal {
 
         for (ItemEntity item : miniMe.level().getEntitiesOfClass(
                 ItemEntity.class,
-                miniMe.getBoundingBox().inflate(10)
+                miniMe.getBoundingBox().inflate(MiniMeConfig.COLLECT_RADIUS.get())
         )) {
             if (!item.isAlive()) continue;
 

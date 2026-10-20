@@ -13,9 +13,6 @@ public class ClientRenderer {
 
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerEntityRenderer(
-                MMEntities.MINI_ME.get(),
-                MiniMeRenderer::new
-        );
+        event.registerEntityRenderer(MMEntities.MINI_ME.get(), MiniMeRenderer::new);
     }
 }

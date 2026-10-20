@@ -1,9 +1,12 @@
 package com.benbenlaw.minime.screen;
 
 import com.benbenlaw.minime.entity.MiniMeEntity;
+import com.benbenlaw.minime.screen.slot.MenuSlot;
+import com.benbenlaw.minime.screen.slot.MiniMeArmorSlot;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -14,7 +17,15 @@ import java.util.List;
 import java.util.UUID;
 
 public class MiniMeMenu extends AbstractContainerMenu {
+    public static final int BUTTON_TOGGLE_AREA = 0;
+    public static final int BUTTON_TOGGLE_TASK = 100;
+    public static final int BUTTON_TASK_UP = 200;
+    public static final int BUTTON_TASK_DOWN = 300;
+    public static final int BUTTON_QUARRY_WIDTH_DOWN = 400;
+    public static final int BUTTON_QUARRY_WIDTH_UP = 401;
+
     private Container miniMeContainer;
+    private boolean slotsActive = true;
     public MiniMeEntity miniMeEntity;
 
     public static MiniMeMenu create(int i, Inventory inventory, RegistryFriendlyByteBuf registryFriendlyByteBuf) {
@@ -25,22 +36,22 @@ public class MiniMeMenu extends AbstractContainerMenu {
         return new MiniMeMenu(i, inventory, new SimpleContainer(21), miniMeEntity);
     }
 
-    public MiniMeMenu(int containerId, Inventory inventory, Container miniMeContainer, final MiniMeEntity warturtleEntity) {
+    public MiniMeMenu(int containerId, Inventory inventory, Container miniMeContainer, final MiniMeEntity miniMeEntity) {
         super(MMMenus.MINI_ME_MENU.get(), containerId);
         this.miniMeContainer = miniMeContainer;
-        this.miniMeEntity = warturtleEntity;
+        this.miniMeEntity = miniMeEntity;
         miniMeContainer.startOpen(inventory.player);
 
         addPlayerInventory(inventory);
         addPlayerHotbar(inventory);
 
-        this.addSlot(new Slot(miniMeContainer, MiniMeEntity.HEAD_SLOT, 8, 9));
-        this.addSlot(new Slot(miniMeContainer, MiniMeEntity.CHEST_SLOT, 8, 27));
-        this.addSlot(new Slot(miniMeContainer, MiniMeEntity.LEGS_SLOT, 8, 45));
-        this.addSlot(new Slot(miniMeContainer, MiniMeEntity.BOOTS_SLOT, 8, 63));
+        this.addSlot(new MiniMeArmorSlot(this, miniMeContainer, MiniMeEntity.HEAD_SLOT, 8, 9, EquipmentSlot.HEAD));
+        this.addSlot(new MiniMeArmorSlot(this, miniMeContainer, MiniMeEntity.CHEST_SLOT, 8, 27, EquipmentSlot.CHEST));
+        this.addSlot(new MiniMeArmorSlot(this, miniMeContainer, MiniMeEntity.LEGS_SLOT, 8, 45, EquipmentSlot.LEGS));
+        this.addSlot(new MiniMeArmorSlot(this, miniMeContainer, MiniMeEntity.BOOTS_SLOT,8, 63, EquipmentSlot.FEET));
 
-        this.addSlot(new Slot(miniMeContainer, MiniMeEntity.MAIN_HAND, 26, 63));
-        this.addSlot(new Slot(miniMeContainer, MiniMeEntity.OFF_HAND, 44, 63));
+        this.addSlot(new MenuSlot(this, miniMeContainer, MiniMeEntity.MAIN_HAND, 26, 63));
+        this.addSlot(new MenuSlot(this, miniMeContainer, MiniMeEntity.OFF_HAND, 44, 63));
 
         int startX = 72;
         int startY = 27;
@@ -52,18 +63,53 @@ public class MiniMeMenu extends AbstractContainerMenu {
                 int slotIndex = 6 + row * columns + col;
                 int xPos = startX + col * 18;
                 int yPos = startY + row * 18;
-                this.addSlot(new Slot(miniMeContainer, slotIndex, xPos, yPos));
+                this.addSlot(new MenuSlot(this, miniMeContainer, slotIndex, xPos, yPos));
             }
         }
     }
 
 
+    public boolean areSlotsActive() {
+        return slotsActive;
+    }
+
+    public void setSlotsActive(boolean active) {
+        this.slotsActive = active;
+    }
+
+    @Override
+    public boolean clickMenuButton(Player player, int id) {
+        if (this.miniMeEntity == null) return false;
+
+        if (id == BUTTON_TOGGLE_AREA) {
+            this.miniMeEntity.setShowingArea(!this.miniMeEntity.isShowingArea());
+            return true;
+        }
+        if (id == BUTTON_QUARRY_WIDTH_DOWN || id == BUTTON_QUARRY_WIDTH_UP) {
+            this.miniMeEntity.changeQuarryWidth(id == BUTTON_QUARRY_WIDTH_UP ? 1 : -1);
+            return true;
+        }
+        if (id >= BUTTON_TASK_DOWN) {
+            this.miniMeEntity.moveTask(id - BUTTON_TASK_DOWN, 1);
+            return true;
+        }
+        if (id >= BUTTON_TASK_UP) {
+            this.miniMeEntity.moveTask(id - BUTTON_TASK_UP, -1);
+            return true;
+        }
+        if (id >= BUTTON_TOGGLE_TASK) {
+            this.miniMeEntity.toggleTask(id - BUTTON_TOGGLE_TASK);
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean stillValid(Player player) {
-        return !this.miniMeEntity.hasInventoryChanged(this.miniMeContainer)
+        return this.miniMeEntity != null
                 && this.miniMeContainer.stillValid(player)
                 && this.miniMeEntity.isAlive()
-                && player.canInteractWithEntity(this.miniMeEntity, 4.0);
+                && player.isWithinEntityInteractionRange(this.miniMeEntity, 4.0);
     }
 
     @Override
@@ -114,9 +160,6 @@ public class MiniMeMenu extends AbstractContainerMenu {
         return itemstack;
     }
 
-    /**
-     * Called when the container is closed.
-     */
     @Override
     public void removed(Player player) {
         super.removed(player);
@@ -126,14 +169,14 @@ public class MiniMeMenu extends AbstractContainerMenu {
     private void addPlayerInventory(Inventory playerInventory) {
         for (int i = 0; i < 3; ++i) {
             for (int l = 0; l < 9; ++l) {
-                this.addSlot(new Slot(playerInventory, l + i * 9 + 9, 8 + l * 18, 84 + i * 18));
+                this.addSlot(new MenuSlot(this, playerInventory, l + i * 9 + 9, 8 + l * 18, 84 + i * 18));
             }
         }
     }
 
     private void addPlayerHotbar(Inventory playerInventory) {
         for (int i = 0; i < 9; ++i) {
-            this.addSlot(new Slot(playerInventory, i, 8 + i * 18, 142));
+            this.addSlot(new MenuSlot(this, playerInventory, i, 8 + i * 18, 142));
         }
     }
 }

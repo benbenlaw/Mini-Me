@@ -1,6 +1,7 @@
 package com.benbenlaw.minime;
 
 
+import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.entity.MMEntities;
 import com.benbenlaw.minime.screen.MMMenus;
 import com.benbenlaw.minime.screen.MiniMeScreen;
@@ -8,6 +9,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 
@@ -22,12 +24,15 @@ public class MiniMe {
 
     public MiniMe(final IEventBus eventBus, final ModContainer modContainer) {
 
+        modContainer.registerConfig(ModConfig.Type.COMMON, MiniMeConfig.SPEC);
+
         MMEntities.ENTITIES.register(eventBus);
         MMMenus.MENUS.register(eventBus);
     }
 
     @EventBusSubscriber(modid = MiniMe.MOD_ID, value = Dist.CLIENT)
     public static class ClientModEvents {
+
         @SubscribeEvent
         public static void registerScreens(RegisterMenuScreensEvent event) {
             event.register(MMMenus.MINI_ME_MENU.get(), MiniMeScreen::new);
