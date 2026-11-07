@@ -1,19 +1,30 @@
 package com.benbenlaw.minime.screen.slot;
 
 import com.benbenlaw.minime.screen.MiniMeMenu;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.Container;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.ItemStack;
 
 public class MiniMeArmorSlot extends MenuSlot {
-
     private final EquipmentSlot equipmentSlot;
 
     public MiniMeArmorSlot(MiniMeMenu menu, Container container, int index, int x, int y, EquipmentSlot slot) {
         super(menu, container, index, x, y);
         this.equipmentSlot = slot;
+        this.setBackground(emptyIcon(slot));
+    }
+
+    private static Identifier emptyIcon(EquipmentSlot slot) {
+        return switch (slot) {
+            case HEAD -> InventoryMenu.EMPTY_ARMOR_SLOT_HELMET;
+            case CHEST -> InventoryMenu.EMPTY_ARMOR_SLOT_CHESTPLATE;
+            case LEGS -> InventoryMenu.EMPTY_ARMOR_SLOT_LEGGINGS;
+            default -> InventoryMenu.EMPTY_ARMOR_SLOT_BOOTS;
+        };
     }
 
     @Override

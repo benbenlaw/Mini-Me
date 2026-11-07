@@ -1,0 +1,17 @@
+{
+  "model": {
+    "type": "minecraft:condition",
+    "on_false": {
+      "type": "minecraft:model",
+      "model": "minime:block/mini_me_constructor"
+    },
+    "on_true": {
+      "type": "minecraft:special",
+      "base": "minime:block/mini_me_constructor",
+      "model": {
+        "type": "minime:constructor"
+      }
+    },
+    "property": "minime:neosync_loaded"
+  }
+}

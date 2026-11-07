@@ -5,7 +5,6 @@ import com.benbenlaw.minime.entity.MiniMeEntity;
 import com.benbenlaw.minime.entity.MiniMeTask;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -17,11 +16,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import java.util.EnumSet;
 
 public class MineQuarryGoal extends Goal {
-
     private static final int MIN_BREAK_TICKS = 5;
-    private static final int MAX_BREAK_TICKS = 400; // obsidian with a diamond pickaxe is ~190
+    private static final int MAX_BREAK_TICKS = 400;
     private static final int SCAN_INTERVAL = 40;
     private static final double REACH_SQR = 2.5D * 2.5D;
+    private static final double MAX_MINING_RANGE_SQR = 14.0D * 14.0D;
 
     private final MiniMeEntity miniMe;
 
@@ -40,10 +39,9 @@ public class MineQuarryGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.MINING_ENABLED.get() || !miniMe.isTaskEnabled(MiniMeTask.MINE)) return false;
-        if (!miniMe.getMainHandItem().is(ItemTags.PICKAXES)) return false;
+        if (!MiniMeConfig.MINING_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.MINE)) return false;
         if (miniMe.getHomePos() == null || !miniMe.hasStorageSpace()) return false;
-        if (miniMe.shouldDumpMinedItems()) return false; // go and empty out first
+        if (miniMe.shouldDumpMinedItems()) return false;
 
         if (scanCooldown > 0) {
             scanCooldown--;
@@ -61,7 +59,7 @@ public class MineQuarryGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        return target != null && miniMe.getMainHandItem().is(ItemTags.PICKAXES) && miniMe.hasStorageSpace()
+        return target != null && miniMe.isTaskActive(MiniMeTask.MINE) && miniMe.hasStorageSpace()
                 && !miniMe.shouldDumpMinedItems();
     }
 
@@ -73,6 +71,11 @@ public class MineQuarryGoal extends Goal {
 
     @Override
     public void tick() {
+        if (horizontalDistanceSqr(standPos, target) > MAX_MINING_RANGE_SQR) {
+            BlockPos closer = findStandNear(target);
+            if (closer != null) standPos = closer;
+        }
+
         if (miniMe.distanceToSqr(standPos.getX() + 0.5, standPos.getY(), standPos.getZ() + 0.5) > REACH_SQR) {
             if (!miniMe.getNavigation().isInProgress()) moveToStand();
             return;
@@ -119,12 +122,14 @@ public class MineQuarryGoal extends Goal {
         BlockState state = level.getBlockState(pos);
         ItemStack tool = miniMe.getMainHandItem();
 
+        int collected = 0;
         for (ItemStack drop : Block.getDrops(state, level, pos, level.getBlockEntity(pos), miniMe, tool)) {
+            collected += drop.getCount();
             ItemStack leftover = miniMe.insertIntoStorage(drop);
             if (!leftover.isEmpty()) miniMe.spawnAtLocation(level, leftover);
         }
         level.destroyBlock(pos, false, miniMe);
-        miniMe.noteBlockMined();
+        miniMe.noteItemsMined(collected);
 
         if (MiniMeConfig.MINING_DAMAGE_TOOLS.get()) {
             tool.hurtAndBreak(1, miniMe, EquipmentSlot.MAINHAND);
@@ -134,20 +139,19 @@ public class MineQuarryGoal extends Goal {
 
     private BlockPos findNext() {
         Level level = miniMe.level();
-        BlockPos min = miniMe.getQuarryMin();
-        int width = miniMe.getQuarryWidth();
+        MiniMeEntity.Footprint area = miniMe.getQuarryFootprint();
 
-        int topY = min.getY();
-        int bottomY = Math.max(level.getMinY(), topY - MiniMeConfig.MAX_QUARRY_DEPTH.get() + 1);
+        int topY = Math.min(miniMe.getQuarryTopY(), level.getMaxY());
+        int bottomY = Math.max(miniMe.getQuarryBottomY(), level.getMinY());
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
         for (int y = Math.min(layerY, topY); y >= bottomY; y--) {
             BlockPos best = null;
             double bestDistance = Double.MAX_VALUE;
 
-            for (int x = 0; x < width; x++) {
-                for (int z = 0; z < width; z++) {
-                    pos.set(min.getX() + x, y, min.getZ() + z);
+            for (int x = area.minX(); x < area.maxXExclusive(); x++) {
+                for (int z = area.minZ(); z < area.maxZExclusive(); z++) {
+                    pos.set(x, y, z);
                     if (!canMine(level, pos)) continue;
 
                     double distance = standPos.distSqr(pos);
@@ -178,21 +182,23 @@ public class MineQuarryGoal extends Goal {
     }
 
     private BlockPos findStandPos() {
-        Level level = miniMe.level();
-        BlockPos home = miniMe.getHomePos();
-        BlockPos min = miniMe.getQuarryMin();
-        int width = miniMe.getQuarryWidth();
+        MiniMeEntity.Footprint area = miniMe.getQuarryFootprint();
+        return nearestStandable(area, area.centerX(), area.centerZ(), miniMe.getX(), miniMe.getZ());
+    }
 
-        int east = min.getX() + width;
-        int west = min.getX() - 1;
-        int south = min.getZ() + width;
-        int north = min.getZ() - 1;
+    private BlockPos findStandNear(BlockPos block) {
+        return nearestStandable(miniMe.getQuarryFootprint(), block.getX(), block.getZ(), block.getX(), block.getZ());
+    }
+
+    private BlockPos nearestStandable(MiniMeEntity.Footprint area, int alongX, int alongZ, double refX, double refZ) {
+        Level level = miniMe.level();
+        int y = miniMe.getHomePos().getY();
 
         BlockPos[] sides = {
-                new BlockPos(east, home.getY(), home.getZ()),
-                new BlockPos(west, home.getY(), home.getZ()),
-                new BlockPos(home.getX(), home.getY(), south),
-                new BlockPos(home.getX(), home.getY(), north)
+                new BlockPos(area.maxXExclusive(), y, alongZ),
+                new BlockPos(area.minX() - 1, y, alongZ),
+                new BlockPos(alongX, y, area.maxZExclusive()),
+                new BlockPos(alongX, y, area.minZ() - 1)
         };
 
         BlockPos best = null;
@@ -201,7 +207,9 @@ public class MineQuarryGoal extends Goal {
             BlockPos ground = findStandable(level, side);
             if (ground == null) continue;
 
-            double distance = miniMe.distanceToSqr(ground.getX() + 0.5, ground.getY(), ground.getZ() + 0.5);
+            double dx = ground.getX() + 0.5 - refX;
+            double dz = ground.getZ() + 0.5 - refZ;
+            double distance = dx * dx + dz * dz;
             if (distance < bestDistance) {
                 bestDistance = distance;
                 best = ground;
@@ -211,7 +219,7 @@ public class MineQuarryGoal extends Goal {
     }
 
     private static BlockPos findStandable(Level level, BlockPos around) {
-        for (int dy = 3; dy >= -4; dy--) {
+        for (int dy = 6; dy >= -8; dy--) {
             BlockPos feet = around.above(dy);
             if (level.getBlockState(feet.below()).blocksMotion()
                     && level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
@@ -220,6 +228,12 @@ public class MineQuarryGoal extends Goal {
             }
         }
         return null;
+    }
+
+    private static double horizontalDistanceSqr(BlockPos a, BlockPos b) {
+        double dx = a.getX() - b.getX();
+        double dz = a.getZ() - b.getZ();
+        return dx * dx + dz * dz;
     }
 
     private int breakTicksFor(BlockState state, Level level, BlockPos pos) {

@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": "minecraft:crafting_table",
+    "H": "minecraft:hopper",
+    "I": "minecraft:iron_ingot",
+    "P": "#minecraft:planks"
+  },
+  "pattern": [
+    "IHI",
+    "PCP",
+    "IPI"
+  ],
+  "result": {
+    "id": "minime:mini_me_factory"
+  }
+}

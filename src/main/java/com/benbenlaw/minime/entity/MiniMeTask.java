@@ -1,36 +1,38 @@
 package com.benbenlaw.minime.entity;
 
-import net.minecraft.tags.ItemTags;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.common.Tags;
-import org.jspecify.annotations.Nullable;
+import com.mojang.serialization.Codec;
+import net.minecraft.util.StringRepresentable;
 
-public enum MiniMeTask {
+import java.util.Locale;
 
-    COMBAT("Fight", ItemTags.SWORDS),
-    CHOP_TREES("Chop trees", ItemTags.AXES),
-    REPLANT("Replant", ItemTags.AXES),
-    SHEAR("Shear", Tags.Items.TOOLS_SHEAR),
-    MINE("Mine", ItemTags.PICKAXES),
-    COLLECT("Collect", null),
-    DUMP("Use chest", null);
+public enum MiniMeTask implements StringRepresentable {
+    COMBAT("Fight"),
+    CHOP_TREES("Chop trees"),
+    REPLANT("Replant"),
+    SHEAR("Shear"),
+    MINE("Mine"),
+    COLLECT("Collect"),
+    DUMP("Use chest"),
+    FACTORY("Factory");
+
+    public static final Codec<MiniMeTask> CODEC = StringRepresentable.fromEnum(MiniMeTask::values);
 
     private final String label;
-    @Nullable
-    private final TagKey<Item> requiredTool;
 
-    MiniMeTask(String label, @Nullable TagKey<Item> requiredTool) {
+    MiniMeTask(String label) {
         this.label = label;
-        this.requiredTool = requiredTool;
     }
 
     public String label() {
         return label;
     }
 
-    public boolean isUsableWith(ItemStack mainHand) {
-        return requiredTool == null || mainHand.is(requiredTool);
+    public boolean hasSettings() {
+        return this == MINE || this == DUMP;
+    }
+
+    @Override
+    public String getSerializedName() {
+        return name().toLowerCase(Locale.ROOT);
     }
 }

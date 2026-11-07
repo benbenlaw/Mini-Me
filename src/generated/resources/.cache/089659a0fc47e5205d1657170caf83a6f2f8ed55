@@ -1,0 +1,11 @@
+// 26.1.2	2026-11-06T17:32:57.4940929	minime Recipes
+602b29464a004750a777bfbd7354815ab5ce7223 data/minime/advancement/recipes/misc/instructions.json
+6b150c9fe07a3fa193f9eb4c695a981b082cb263 data/minime/advancement/recipes/misc/instruction_desk.json
+ecb5e5ed3a71b7e69d7ff3a228221c66b36fedbf data/minime/advancement/recipes/misc/mini_me_constructor.json
+515309823443f899c99c7006f7642997fefd43de data/minime/advancement/recipes/misc/mini_me_factory.json
+802a169a73fbbc3f7fdbb06d54c99ea6ab128229 data/minime/advancement/recipes/tools/command_tool.json
+6158014352aeafe86739be33b34234437d2a79b0 data/minime/recipe/command_tool.json
+917f365ccc166e58a8a6d30ff43b5cbe18b1502c data/minime/recipe/instructions.json
+10581cc640e5ffed7544cb4b4524408ed1317e7a data/minime/recipe/instruction_desk.json
+1f9d55f57b2271a9ab0972fa32345b52d1594784 data/minime/recipe/mini_me_constructor.json
+95198715983f442ee922a88f08b8339e57acf7af data/minime/recipe/mini_me_factory.json

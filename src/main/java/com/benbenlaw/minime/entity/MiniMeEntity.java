@@ -1,10 +1,12 @@
 package com.benbenlaw.minime.entity;
 
 import com.benbenlaw.minime.config.MiniMeConfig;
+import com.benbenlaw.minime.item.MMDataComponents;
+import com.benbenlaw.minime.item.MMItems;
 import com.benbenlaw.minime.entity.goals.*;
 import com.benbenlaw.minime.screen.MiniMeMenu;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -13,7 +15,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.util.Util;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.Containers;
@@ -22,6 +23,8 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HasCustomInventoryScreen;
@@ -37,6 +40,7 @@ import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ResolvableProfile;
@@ -57,20 +61,32 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScreen {
-
     public static final int HEAD_SLOT = 0;
     public static final int CHEST_SLOT = 1;
     public static final int LEGS_SLOT = 2;
     public static final int BOOTS_SLOT = 3;
     public static final int MAIN_HAND = 4;
     public static final int OFF_HAND = 5;
+    public static final int STORAGE_SLOT_COUNT = 15;
+    public static final int END_STORAGE_SLOT = 6 + STORAGE_SLOT_COUNT;
+    public static final int INSTRUCTION_SLOT = END_STORAGE_SLOT;
+    public static final int CONTAINER_SIZE = INSTRUCTION_SLOT + 1;
+    private static final double CARRY_RANGE = 48.0D;
+    private static final int CARRY_SLOTS = 4;
+    private static final double STACK_HEIGHT = 0.5D;
+    private static final double SHOULDER_SIDE = 0.35D;
+    private static final double SHOULDER_HEIGHT = 1.1D;
     public static final int FIRST_STORAGE_SLOT = 6;
     private static final int MAX_REPLANT_SPOTS = 16;
     private static final int TASK_PRIORITY_BASE = 2;
+    private static final int CHEST_SCAN_INTERVAL = 40;
+    public static final int MAX_NAME_LENGTH = 32;
+    public static final int MAX_SKIN_NAME_LENGTH = 16;
 
     private static final EntityDataAccessor<ResolvableProfile> DATA_PROFILE =
             SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.RESOLVABLE_PROFILE);
@@ -78,13 +94,36 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
     private static final EntityDataAccessor<String> DATA_TASKS =
             SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.STRING);
 
-    private static final EntityDataAccessor<Integer> DATA_QUARRY_WIDTH =
+    private static final Map<MiniMeSetting, EntityDataAccessor<Integer>> SETTING_DATA = new EnumMap<>(MiniMeSetting.class);
+
+    static {
+        for (MiniMeSetting setting : MiniMeSetting.values()) {
+            SETTING_DATA.put(setting, SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.INT));
+        }
+    }
+
+    private static final EntityDataAccessor<Optional<BlockPos>> DATA_HOME_POS =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.OPTIONAL_BLOCK_POS);
+
+    private static final EntityDataAccessor<Integer> DATA_HOME_RADIUS =
             SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.INT);
+
+    private static final EntityDataAccessor<ItemStack> DATA_INSTRUCTION =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.ITEM_STACK);
+
+    private static final EntityDataAccessor<Integer> DATA_CARRY_SLOT =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.INT);
+
+    private static final EntityDataAccessor<String> DATA_CARRIER =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.STRING);
+
+    private static final EntityDataAccessor<Boolean> DATA_SITTING =
+            SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.BOOLEAN);
 
     private static final EntityDataAccessor<Boolean> DATA_SHOW_AREA =
             SynchedEntityData.defineId(MiniMeEntity.class, EntityDataSerializers.BOOLEAN);
 
-    private final SimpleContainer inventory = new SimpleContainer(21) {
+    private final SimpleContainer inventory = new SimpleContainer(CONTAINER_SIZE) {
         @Override
         public void setChanged() {
             super.setChanged();
@@ -96,19 +135,26 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
     private String cachedTasksRaw;
     private List<TaskSetting> cachedTasks;
 
-    private BlockPos homePos;
-    private int blocksMinedSinceDump;
-    private int homeRadius = MiniMeConfig.DEFAULT_HOME_RADIUS.get();
+    private UUID ownerUuid;
+    private UUID pendingCarry;
+    private int itemsMinedSinceDump;
+    private BlockPos cachedChestPos;
+    private long chestScanTime = -1000;
 
     private final List<ReplantSpot> replantSpots = new ArrayList<>();
+
+    private ItemStack factoryCarry = ItemStack.EMPTY;
 
     public MiniMeEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         this.setCanPickUpLoot(true);
+        this.setCustomNameVisible(true);
     }
 
     @Override
     protected void registerGoals() {
+        goalSelector.addGoal(0, new CarryGoal(this));
+        goalSelector.addGoal(0, new SitGoal(this));
         goalSelector.addGoal(1, new FloatGoal(this));
 
         taskGoals = new EnumMap<>(MiniMeTask.class);
@@ -119,6 +165,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         taskGoals.put(MiniMeTask.MINE, new MineQuarryGoal(this));
         taskGoals.put(MiniMeTask.COLLECT, new CollectLootGoal(this));
         taskGoals.put(MiniMeTask.DUMP, new DumpInventoryGoal(this));
+        taskGoals.put(MiniMeTask.FACTORY, new FactoryGoal(this));
 
         List<TaskSetting> settings = getTaskSettings();
         for (int i = 0; i < settings.size(); i++) {
@@ -134,7 +181,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Monster.class, true) {
             @Override
             public boolean canUse() {
-                return isTaskEnabled(MiniMeTask.COMBAT) && super.canUse();
+                return isTaskActive(MiniMeTask.COMBAT) && super.canUse();
             }
         });
     }
@@ -173,8 +220,197 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         applyTaskSettings(settings);
     }
 
+    public static List<MiniMeTask> tasksOf(ItemStack stack) {
+        if (!stack.is(MMItems.INSTRUCTIONS.get())) return List.of();
+
+        return stack.getOrDefault(MMDataComponents.INSTRUCTION_TASKS.get(), List.of());
+    }
+
     public boolean isTaskApplicable(MiniMeTask task) {
-        return task.isUsableWith(getMainHandItem());
+        return tasksOf(getInstructionItem()).contains(task);
+    }
+
+    public boolean isSitting() {
+        return this.entityData.get(DATA_SITTING);
+    }
+
+    public void setSitting(boolean sitting) {
+        this.entityData.set(DATA_SITTING, sitting);
+    }
+
+    public boolean isCarried() {
+        return !this.entityData.get(DATA_CARRIER).isEmpty();
+    }
+
+    public boolean isCarriedBy(Player player) {
+        return player != null && player.getUUID().toString().equals(this.entityData.get(DATA_CARRIER));
+    }
+
+    @Nullable
+    public Player getCarrier() {
+        String stored = this.entityData.get(DATA_CARRIER);
+        if (stored.isEmpty()) return null;
+
+        try {
+            return this.level().getPlayerByUUID(UUID.fromString(stored));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    @Nullable
+    public Player getPendingCarryPlayer() {
+        return pendingCarry == null ? null : this.level().getPlayerByUUID(pendingCarry);
+    }
+
+    public void cancelCarry() {
+        pendingCarry = null;
+    }
+
+    public int getCarrySlot() {
+        return this.entityData.get(DATA_CARRY_SLOT);
+    }
+
+    private int freeCarrySlot(Player player) {
+        boolean[] used = new boolean[CARRY_SLOTS];
+        for (MiniMeEntity other : this.level().getEntitiesOfClass(MiniMeEntity.class, player.getBoundingBox().inflate(8.0D),
+                entity -> entity != this && entity.isCarriedBy(player))) {
+            int slot = other.getCarrySlot();
+            if (slot >= 0 && slot < CARRY_SLOTS) used[slot] = true;
+        }
+        for (int i = 0; i < CARRY_SLOTS; i++) {
+            if (!used[i]) return i;
+        }
+        return -1;
+    }
+
+    public void completeCarry(Player player) {
+        pendingCarry = null;
+        int slot = freeCarrySlot(player);
+        if (slot < 0) return;
+
+        this.entityData.set(DATA_CARRY_SLOT, slot);
+        this.entityData.set(DATA_CARRIER, player.getUUID().toString());
+        this.noPhysics = true;
+        this.setNoGravity(true);
+        this.setDeltaMovement(Vec3.ZERO);
+        this.getNavigation().stop();
+    }
+
+    private void putDown(@Nullable Player carrier) {
+        this.entityData.set(DATA_CARRIER, "");
+        this.noPhysics = false;
+        this.setNoGravity(false);
+        if (carrier != null) {
+            double yaw = Math.toRadians(carrier.yBodyRot);
+            this.setPos(carrier.getX() - Math.cos(yaw) * 0.8, carrier.getY(), carrier.getZ() - Math.sin(yaw) * 0.8);
+        }
+        this.setDeltaMovement(Vec3.ZERO);
+    }
+
+    public void toggleSit(ServerPlayer player) {
+        if (isCarried()) {
+            player.sendSystemMessage(Component.literal("Put the Mini Me down before telling it to sit."), true);
+            return;
+        }
+        setSitting(!isSitting());
+        player.sendSystemMessage(Component.literal(isSitting() ? "The Mini Me sits down." : "The Mini Me stands up."), true);
+    }
+
+    public void toggleCarry(ServerPlayer player) {
+        if (isCarriedBy(player)) {
+            putDown(player);
+            player.sendSystemMessage(Component.literal("You put the Mini Me down."), true);
+            return;
+        }
+        if (isCarried()) return;
+
+        if (pendingCarry != null) {
+            pendingCarry = null;
+            player.sendSystemMessage(Component.literal("The Mini Me stops coming over."), true);
+            return;
+        }
+        if (distanceTo(player) > CARRY_RANGE) {
+            player.sendSystemMessage(Component.literal("The Mini Me is too far away to come to you."), true);
+            return;
+        }
+
+        if (freeCarrySlot(player) < 0) {
+            player.sendSystemMessage(Component.literal("Your shoulders are full. You can carry four Mini Mes."), true);
+            return;
+        }
+
+        setSitting(false);
+        pendingCarry = player.getUUID();
+        player.sendSystemMessage(Component.literal("The Mini Me runs over to you."), true);
+    }
+
+    public Vec3 shoulderPosition(Player carrier, float partialTick) {
+        double yaw = Math.toRadians(Mth.rotLerp(partialTick, carrier.yBodyRotO, carrier.yBodyRot));
+        int slot = getCarrySlot();
+        double side = slot % 2 == 0 ? SHOULDER_SIDE : -SHOULDER_SIDE;
+        double height = SHOULDER_HEIGHT + (slot / 2) * STACK_HEIGHT - (carrier.isCrouching() ? 0.25D : 0.0D);
+        return new Vec3(Mth.lerp(partialTick, carrier.xo, carrier.getX()) - Math.cos(yaw) * side,
+                Mth.lerp(partialTick, carrier.yo, carrier.getY()) + height,
+                Mth.lerp(partialTick, carrier.zo, carrier.getZ()) - Math.sin(yaw) * side);
+    }
+
+    @Override
+    public boolean isPushable() {
+        return !isCarried() && super.isPushable();
+    }
+
+    @Override
+    public void push(Entity entity) {
+        if (!isCarried()) super.push(entity);
+    }
+
+    @Override
+    protected void doPush(Entity entity) {
+        if (!isCarried()) super.doPush(entity);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+
+        if (!isCarried()) {
+            this.noPhysics = false;
+            return;
+        }
+
+        this.noPhysics = true;
+        Player carrier = getCarrier();
+        if (carrier == null || !carrier.isAlive()) {
+            if (!this.level().isClientSide()) putDown(null);
+            return;
+        }
+
+        Vec3 spot = shoulderPosition(carrier, 1.0F);
+        this.setPos(spot.x, spot.y, spot.z);
+        this.setDeltaMovement(Vec3.ZERO);
+        this.fallDistance = 0.0D;
+        this.yBodyRotO = this.yBodyRot;
+        this.yBodyRot = carrier.yBodyRot;
+        this.setYRot(carrier.getYRot());
+        this.yHeadRotO = this.yHeadRot;
+        this.yHeadRot = carrier.yHeadRot;
+    }
+
+    public ItemStack getFactoryCarry() {
+        return factoryCarry;
+    }
+
+    public void setFactoryCarry(ItemStack stack) {
+        this.factoryCarry = stack;
+    }
+
+    public ItemStack getInstructionItem() {
+        return this.entityData.get(DATA_INSTRUCTION);
+    }
+
+    public boolean isTaskActive(MiniMeTask task) {
+        return isTaskApplicable(task) && isTaskEnabled(task);
     }
 
     public void moveTask(int index, int direction) {
@@ -245,50 +481,6 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         this.entityData.set(DATA_SHOW_AREA, showing);
     }
 
-    @Override
-    public void tick() {
-        super.tick();
-
-        if (this.level() instanceof ServerLevel serverLevel && homePos != null && isShowingArea() && this.tickCount % 10 == 0) {
-            showArea(serverLevel);
-        }
-    }
-
-    private void showQuarry(ServerLevel level) {
-        BlockPos min = getQuarryMin();
-        int width = getQuarryWidth();
-        double y = homePos.getY() + 0.1;
-
-        for (int i = 0; i <= width; i++) {
-            level.sendParticles(ParticleTypes.CRIT, min.getX() + i, y, min.getZ(), 1, 0, 0, 0, 0);
-            level.sendParticles(ParticleTypes.CRIT, min.getX() + i, y, min.getZ() + width, 1, 0, 0, 0, 0);
-            level.sendParticles(ParticleTypes.CRIT, min.getX(), y, min.getZ() + i, 1, 0, 0, 0, 0);
-            level.sendParticles(ParticleTypes.CRIT, min.getX() + width, y, min.getZ() + i, 1, 0, 0, 0, 0);
-        }
-    }
-
-    private void showArea(ServerLevel level) {
-        double cx = homePos.getX() + 0.5;
-        double cz = homePos.getZ() + 0.5;
-        double y = homePos.getY() + 1.0;
-
-        int points = Math.max(16, (int) (2 * Math.PI * homeRadius));
-        for (int i = 0; i < points; i++) {
-            double angle = 2 * Math.PI * i / points;
-            level.sendParticles(ParticleTypes.HAPPY_VILLAGER,
-                    cx + Math.cos(angle) * homeRadius, y, cz + Math.sin(angle) * homeRadius,
-                    1, 0, 0, 0, 0);
-        }
-
-        for (int i = 0; i < 6; i++) {
-            level.sendParticles(ParticleTypes.END_ROD, cx, y + i * 0.5, cz, 1, 0, 0, 0, 0);
-        }
-
-        if (isTaskEnabled(MiniMeTask.MINE) && isTaskApplicable(MiniMeTask.MINE)) {
-            showQuarry(level);
-        }
-    }
-
     public record ReplantSpot(BlockPos pos, @Nullable Item preferred) {
     }
 
@@ -314,7 +506,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         int before = stack.getCount();
 
         ItemStack remainder = insertIntoStorage(stack);
-        if (remainder.getCount() == before) return; // nothing fitted
+        if (remainder.getCount() == before) return;
 
         this.playSound(SoundEvents.ITEM_PICKUP);
         if (remainder.isEmpty()) {
@@ -327,7 +519,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
     public ItemStack insertIntoStorage(ItemStack stack) {
         ItemStack remaining = stack.copy();
 
-        for (int i = FIRST_STORAGE_SLOT; i < inventory.getContainerSize() && !remaining.isEmpty(); i++) {
+        for (int i = FIRST_STORAGE_SLOT; i < END_STORAGE_SLOT && !remaining.isEmpty(); i++) {
             ItemStack slot = inventory.getItem(i);
             if (!slot.isEmpty() && ItemStack.isSameItemSameComponents(slot, remaining)) {
                 int move = Math.min(slot.getMaxStackSize() - slot.getCount(), remaining.getCount());
@@ -338,7 +530,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
             }
         }
 
-        for (int i = FIRST_STORAGE_SLOT; i < inventory.getContainerSize() && !remaining.isEmpty(); i++) {
+        for (int i = FIRST_STORAGE_SLOT; i < END_STORAGE_SLOT && !remaining.isEmpty(); i++) {
             if (inventory.getItem(i).isEmpty()) {
                 int move = Math.min(remaining.getCount(), remaining.getMaxStackSize());
                 inventory.setItem(i, remaining.copyWithCount(move));
@@ -350,46 +542,132 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         return remaining;
     }
 
+    public boolean hasStoredItems() {
+        for (int i = FIRST_STORAGE_SLOT; i < END_STORAGE_SLOT; i++) {
+            if (!inventory.getItem(i).isEmpty()) return true;
+        }
+        return false;
+    }
+
     public boolean hasStorageSpace() {
-        for (int i = FIRST_STORAGE_SLOT; i < inventory.getContainerSize(); i++) {
+        for (int i = FIRST_STORAGE_SLOT; i < END_STORAGE_SLOT; i++) {
             if (inventory.getItem(i).isEmpty()) return true;
         }
         return false;
     }
 
-    public void noteBlockMined() {
-        blocksMinedSinceDump++;
+    public void noteItemsMined(int count) {
+        itemsMinedSinceDump += count;
     }
 
     public void resetMinedCount() {
-        blocksMinedSinceDump = 0;
+        itemsMinedSinceDump = 0;
     }
 
     public boolean shouldDumpMinedItems() {
-        int every = MiniMeConfig.MINING_DUMP_EVERY.get();
-        if (every <= 0 || blocksMinedSinceDump < every) return false;
+        int after = getSetting(MiniMeSetting.DUMP_AFTER);
+        if (after <= 0 || itemsMinedSinceDump < after) return false;
 
-        return isTaskEnabled(MiniMeTask.DUMP) && MiniMeConfig.DUMP_TO_CHEST.get() && findChestNearHome() != null;
+        if (!hasStoredItems()) {
+            itemsMinedSinceDump = 0;
+            return false;
+        }
+
+        return isTaskActive(MiniMeTask.DUMP) && MiniMeConfig.DUMP_TO_CHEST.get() && findChestNearHome() != null;
     }
 
-    public int getQuarryWidthSetting() {
-        return this.entityData.get(DATA_QUARRY_WIDTH);
+    public int getSettingMin(MiniMeSetting setting) {
+        BlockPos home = getHomePos();
+        if (home != null && (setting == MiniMeSetting.MIN_DEPTH || setting == MiniMeSetting.MAX_DEPTH)) {
+            return home.getY() - level().getMaxY();
+        }
+        return setting.min();
     }
 
-    public int getQuarryWidth() {
-        return Math.max(1, Math.min(getQuarryWidthSetting(), 2 * homeRadius + 1));
+    public int getSettingMax(MiniMeSetting setting) {
+        BlockPos home = getHomePos();
+        if (home != null && (setting == MiniMeSetting.MIN_DEPTH || setting == MiniMeSetting.MAX_DEPTH)) {
+            return home.getY() - level().getMinY();
+        }
+        return setting.max();
     }
 
-    public void changeQuarryWidth(int delta) {
-        int max = Math.max(1, Math.min(MiniMeConfig.MAX_QUARRY_WIDTH.get(), 2 * homeRadius + 1));
-        this.entityData.set(DATA_QUARRY_WIDTH, Math.max(1, Math.min(getQuarryWidthSetting() + delta, max)));
+    public int clampSetting(MiniMeSetting setting, int value) {
+        return Math.max(getSettingMin(setting), Math.min(value, getSettingMax(setting)));
+    }
+
+    public int getSetting(MiniMeSetting setting) {
+        return this.entityData.get(SETTING_DATA.get(setting));
+    }
+
+    private void setSetting(MiniMeSetting setting, int value) {
+        this.entityData.set(SETTING_DATA.get(setting), clampSetting(setting, value));
+    }
+
+    public void setSettingValue(MiniMeSetting setting, int requested) {
+        int value = clampSetting(setting, requested);
+        setSetting(setting, value);
+
+        if (setting == MiniMeSetting.MIN_DEPTH && value > getSetting(MiniMeSetting.MAX_DEPTH)) {
+            setSetting(MiniMeSetting.MAX_DEPTH, value);
+        }
+        if (setting == MiniMeSetting.MAX_DEPTH && value < getSetting(MiniMeSetting.MIN_DEPTH)) {
+            setSetting(MiniMeSetting.MIN_DEPTH, value);
+        }
+    }
+
+    public record Footprint(int minX, int minZ, int sizeX, int sizeZ) {
+        public int maxXExclusive() {
+            return minX + sizeX;
+        }
+
+        public int maxZExclusive() {
+            return minZ + sizeZ;
+        }
+
+        public int centerX() {
+            return minX + sizeX / 2;
+        }
+
+        public int centerZ() {
+            return minZ + sizeZ / 2;
+        }
+
+        public boolean contains(int x, int z) {
+            return x >= minX && x < maxXExclusive() && z >= minZ && z < maxZExclusive();
+        }
     }
 
     @Nullable
-    public BlockPos getQuarryMin() {
-        if (homePos == null) return null;
-        int offset = (getQuarryWidth() - 1) / 2;
-        return new BlockPos(homePos.getX() - offset, homePos.getY() - 1, homePos.getZ() - offset);
+    public Footprint getQuarryFootprint() {
+        return footprint(MiniMeSetting.QUARRY_SIZE_X, MiniMeSetting.QUARRY_SIZE_Z,
+                MiniMeSetting.QUARRY_OFFSET_X, MiniMeSetting.QUARRY_OFFSET_Z);
+    }
+
+    @Nullable
+    public Footprint getChestFootprint() {
+        return footprint(MiniMeSetting.CHEST_SIZE_X, MiniMeSetting.CHEST_SIZE_Z,
+                MiniMeSetting.CHEST_OFFSET_X, MiniMeSetting.CHEST_OFFSET_Z);
+    }
+
+    @Nullable
+    private Footprint footprint(MiniMeSetting sizeX, MiniMeSetting sizeZ, MiniMeSetting offsetX, MiniMeSetting offsetZ) {
+        if (getHomePos() == null) return null;
+
+        int width = getSetting(sizeX);
+        int length = getSetting(sizeZ);
+        return new Footprint(
+                getHomePos().getX() + getSetting(offsetX) - (width - 1) / 2,
+                getHomePos().getZ() + getSetting(offsetZ) - (length - 1) / 2,
+                width, length);
+    }
+
+    public int getQuarryTopY() {
+        return getHomePos().getY() - getSetting(MiniMeSetting.MIN_DEPTH);
+    }
+
+    public int getQuarryBottomY() {
+        return getHomePos().getY() - getSetting(MiniMeSetting.MAX_DEPTH);
     }
 
     @Override
@@ -402,46 +680,75 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         return MiniMeConfig.COLLECT_ITEMS.get();
     }
 
-    public void setHome(BlockPos pos, int radius) {
-        this.homePos = pos;
-        this.homeRadius = radius;
+    public void setHome(@Nullable BlockPos pos, int radius) {
+        this.entityData.set(DATA_HOME_POS, Optional.ofNullable(pos));
+        this.entityData.set(DATA_HOME_RADIUS, radius);
     }
 
     @Nullable
     public BlockPos getHomePos() {
-        return homePos;
+        return this.entityData.get(DATA_HOME_POS).orElse(null);
     }
 
     public int getHomeRadius() {
-        return homeRadius;
+        return this.entityData.get(DATA_HOME_RADIUS);
     }
 
     public boolean isWithinHomeDistance(BlockPos pos) {
-        return homePos != null && pos.distSqr(homePos) <= homeRadius * homeRadius;
+        return getHomePos() != null && pos.distSqr(getHomePos()) <= getHomeRadius() * getHomeRadius();
     }
 
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(DATA_PROFILE, ResolvableProfile.createUnresolved(Util.NIL_UUID));
+        builder.define(DATA_SITTING, false);
+        builder.define(DATA_CARRIER, "");
+        builder.define(DATA_CARRY_SLOT, 0);
         builder.define(DATA_SHOW_AREA, false);
+        builder.define(DATA_INSTRUCTION, ItemStack.EMPTY);
+        builder.define(DATA_HOME_POS, Optional.empty());
+        builder.define(DATA_HOME_RADIUS, MiniMeConfig.DEFAULT_HOME_RADIUS.get());
         builder.define(DATA_TASKS, defaultTasks());
-        builder.define(DATA_QUARRY_WIDTH, 5);
+        for (MiniMeSetting setting : MiniMeSetting.values()) {
+            builder.define(SETTING_DATA.get(setting), setting.defaultValue());
+        }
     }
 
     @Override
     protected void dropAllDeathLoot(@NotNull ServerLevel level, @NotNull DamageSource source) {
         Containers.dropContents(level, this.blockPosition(), this.inventory);
+        Containers.dropItemStack(level, getX(), getY(), getZ(), this.factoryCarry);
+        this.factoryCarry = ItemStack.EMPTY;
     }
 
     public void setOwnerUUID(@Nullable UUID uuid) {
-        this.entityData.set(DATA_PROFILE, ResolvableProfile.createUnresolved(uuid == null ? Util.NIL_UUID : uuid));
+        this.ownerUuid = uuid;
+        setSkin("");
     }
 
     @Nullable
     public UUID getOwnerUUID() {
-        UUID id = getProfile().partialProfile().id();
-        return Util.NIL_UUID.equals(id) ? null : id;
+        return ownerUuid;
+    }
+
+    public void setSkin(String name) {
+        String trimmed = name.trim();
+        if (trimmed.isEmpty()) {
+            this.entityData.set(DATA_PROFILE, ResolvableProfile.createUnresolved(ownerUuid == null ? Util.NIL_UUID : ownerUuid));
+        } else {
+            this.entityData.set(DATA_PROFILE, ResolvableProfile.createUnresolved(trimmed));
+        }
+    }
+
+    public String getSkinName() {
+        return getProfile().name().orElse("");
+    }
+
+    public void rename(String name) {
+        String trimmed = name.trim();
+        if (trimmed.length() > MAX_NAME_LENGTH) trimmed = trimmed.substring(0, MAX_NAME_LENGTH);
+        this.setCustomName(trimmed.isEmpty() ? null : Component.literal(trimmed));
     }
 
     public ResolvableProfile getProfile() {
@@ -459,7 +766,6 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
     @Override
     protected @NotNull InteractionResult mobInteract(@NotNull Player player, @NotNull InteractionHand hand) {
         if (!this.level().isClientSide()) {
-
             if (player.isShiftKeyDown()) {
                 this.setHome(this.blockPosition(), MiniMeConfig.DEFAULT_HOME_RADIUS.get());
                 player.sendOverlayMessage(Component.literal("MiniMe home set!"));
@@ -490,23 +796,45 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
 
     @Nullable
     public BlockEntity findChestNearHome() {
-        if (homePos == null) return null;
+        if (getHomePos() == null) return null;
 
-        int radius = 3;
-        for (int x = -radius; x <= radius; x++) {
-            for (int y = -1; y <= 1; y++) {
-                for (int z = -radius; z <= radius; z++) {
-                    BlockPos pos = homePos.offset(x, y, z);
-                    if (level().getBlockState(pos).is(Blocks.CHEST)) {
-                        BlockEntity blockEntity = level().getBlockEntity(pos);
-                        if (blockEntity instanceof ChestBlockEntity chest) {
-                            return chest;
-                        }
+        long now = level().getGameTime();
+        boolean stale = now - chestScanTime >= CHEST_SCAN_INTERVAL
+                || (cachedChestPos != null && !(level().getBlockState(cachedChestPos).getBlock() instanceof ChestBlock));
+        if (stale) {
+            chestScanTime = now;
+            cachedChestPos = scanForChest();
+        }
+        return cachedChestPos == null ? null : level().getBlockEntity(cachedChestPos);
+    }
+
+    @Nullable
+    private BlockPos scanForChest() {
+        Footprint area = getChestFootprint();
+        boolean quarrying = isTaskActive(MiniMeTask.MINE);
+        Footprint quarry = quarrying ? getQuarryFootprint() : null;
+
+        BlockPos best = null;
+        double bestDistance = Double.MAX_VALUE;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+
+        for (int x = area.minX(); x < area.maxXExclusive(); x++) {
+            for (int z = area.minZ(); z < area.maxZExclusive(); z++) {
+                if (quarry != null && quarry.contains(x, z)) continue;
+
+                for (int y = getHomePos().getY() - 4; y <= getHomePos().getY() + 4; y++) {
+                    pos.set(x, y, z);
+                    if (!(level().getBlockState(pos).getBlock() instanceof ChestBlock)) continue;
+
+                    double distance = distanceToSqr(x + 0.5, y, z + 0.5);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        best = pos.immutable();
                     }
                 }
             }
         }
-        return null;
+        return best;
     }
 
     public void dumpInventoryToChest() {
@@ -515,7 +843,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
 
         boolean hasItems = false;
 
-        for (int i = FIRST_STORAGE_SLOT; i < this.inventory.getContainerSize(); i++) {
+        for (int i = FIRST_STORAGE_SLOT; i < END_STORAGE_SLOT; i++) {
             ItemStack stack = this.inventory.getItem(i);
             if (!stack.isEmpty()) {
                 hasItems = true;
@@ -547,7 +875,6 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
             chest.setChanged();
             this.inventory.setChanged();
         }
-
     }
 
     public boolean setChestOpen(BlockPos pos, boolean open) {
@@ -573,6 +900,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         this.setItemSlot(EquipmentSlot.FEET, inventory.getItem(BOOTS_SLOT));
         this.setItemSlot(EquipmentSlot.MAINHAND, inventory.getItem(MAIN_HAND));
         this.setItemSlot(EquipmentSlot.OFFHAND, inventory.getItem(OFF_HAND));
+        this.entityData.set(DATA_INSTRUCTION, inventory.getItem(INSTRUCTION_SLOT).copy());
     }
 
     @Override
@@ -581,14 +909,20 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
 
         ContainerHelper.saveAllItems(output, this.inventory.getItems());
 
-        if (homePos != null) {
-            output.store("HomePos", BlockPos.CODEC, homePos);
-            output.putInt("HomeRadius", homeRadius);
+        if (getHomePos() != null) {
+            output.store("HomePos", BlockPos.CODEC, getHomePos());
+            output.putInt("HomeRadius", getHomeRadius());
         }
 
         output.store("Profile", ResolvableProfile.CODEC, getProfile());
+        if (ownerUuid != null) output.store("Owner", UUIDUtil.CODEC, ownerUuid);
+        output.store("FactoryCarry", ItemStack.OPTIONAL_CODEC, factoryCarry);
+        output.putBoolean("Sitting", isSitting());
+
         output.putString("Tasks", this.entityData.get(DATA_TASKS));
-        output.putInt("QuarryWidth", getQuarryWidthSetting());
+        for (MiniMeSetting setting : MiniMeSetting.values()) {
+            output.putInt(setting.name(), getSetting(setting));
+        }
     }
 
     @Override
@@ -599,26 +933,20 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         ContainerHelper.loadAllItems(input, this.inventory.getItems());
         this.syncEquipmentFromInventory();
 
-        this.homePos = input.read("HomePos", BlockPos.CODEC).orElse(null);
-        this.homeRadius = input.getIntOr("HomeRadius", MiniMeConfig.DEFAULT_HOME_RADIUS.get());
+        setHome(input.read("HomePos", BlockPos.CODEC).orElse(null),
+                input.getIntOr("HomeRadius", MiniMeConfig.DEFAULT_HOME_RADIUS.get()));
 
         input.read("Profile", ResolvableProfile.CODEC).ifPresent(profile -> this.entityData.set(DATA_PROFILE, profile));
+        this.ownerUuid = input.read("Owner", UUIDUtil.CODEC).orElse(null);
+        this.factoryCarry = input.read("FactoryCarry", ItemStack.OPTIONAL_CODEC).orElse(ItemStack.EMPTY);
+        setSitting(input.getBooleanOr("Sitting", false));
+        this.setNoGravity(false);
+        this.noPhysics = false;
+
 
         input.getString("Tasks").ifPresent(tasks -> applyTaskSettings(parseTasks(tasks)));
-        this.entityData.set(DATA_QUARRY_WIDTH, Math.max(1, input.getIntOr("QuarryWidth", 5)));
+        for (MiniMeSetting setting : MiniMeSetting.values()) {
+            setSetting(setting, input.getIntOr(setting.name(), setting.defaultValue()));
+        }
     }
-
-    public MiniMeMode getCurrentMode() {
-        ItemStack stack = getMainHandItem();
-
-        if (stack.isEmpty()) return MiniMeMode.IDLE;
-
-        if (stack.is(ItemTags.SWORDS)) return MiniMeMode.COMBAT;
-        if (stack.is(ItemTags.AXES)) return MiniMeMode.TREE_FARMING;
-        if (stack.is(ItemTags.PICKAXES)) return MiniMeMode.MINE;
-        if (stack.is(ItemTags.HOES)) return MiniMeMode.FARM;
-
-        return MiniMeMode.COLLECT;
-    }
-
 }

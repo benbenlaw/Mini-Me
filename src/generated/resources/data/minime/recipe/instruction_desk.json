@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": "minecraft:book",
+    "P": "#minecraft:planks",
+    "S": "minecraft:stick"
+  },
+  "pattern": [
+    "PBP",
+    "S S",
+    "S S"
+  ],
+  "result": {
+    "id": "minime:instruction_desk"
+  }
+}

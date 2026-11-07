@@ -18,7 +18,6 @@ import java.util.Comparator;
 import java.util.EnumSet;
 
 public class ShearMobsGoal extends Goal {
-
     private static final int SCAN_INTERVAL = 20;
     private static final int MAX_TICKS = 200;
     private static final double REACH_SQR = 2.0D * 2.0D;
@@ -36,7 +35,7 @@ public class ShearMobsGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.SHEARING_ENABLED.get() || !miniMe.isTaskEnabled(MiniMeTask.SHEAR)) return false;
+        if (!MiniMeConfig.SHEARING_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.SHEAR)) return false;
         if (!miniMe.getMainHandItem().is(Tags.Items.TOOLS_SHEAR)) return false;
         if (miniMe.getHomePos() == null) return false;
 
@@ -53,7 +52,7 @@ public class ShearMobsGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         return target != null && target.isAlive() && isShearable(target)
-                && ticks < MAX_TICKS && miniMe.getMainHandItem().is(Tags.Items.TOOLS_SHEAR);
+                && ticks < MAX_TICKS && miniMe.isTaskActive(MiniMeTask.SHEAR) && miniMe.getMainHandItem().is(Tags.Items.TOOLS_SHEAR);
     }
 
     @Override
@@ -80,7 +79,6 @@ public class ShearMobsGoal extends Goal {
         miniMe.swing(InteractionHand.MAIN_HAND);
 
         if (MiniMeConfig.SHEARING_DAMAGE_TOOLS.get()) {
-            // The stack is shared with the inventory, so broken shears empty their slot too.
             shears.hurtAndBreak(1, miniMe, EquipmentSlot.MAINHAND);
             miniMe.getInventory().setChanged();
         }

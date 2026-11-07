@@ -2,12 +2,11 @@ package com.benbenlaw.minime.config;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-/** Common config (config/minime-common.toml). Each job the Mini Me does can be switched off here. */
 public class MiniMeConfig {
-
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     public static final ModConfigSpec.IntValue DEFAULT_HOME_RADIUS;
+    public static final ModConfigSpec.IntValue MAX_AREA_OFFSET;
 
     public static final ModConfigSpec.BooleanValue TREE_FARMING_ENABLED;
     public static final ModConfigSpec.BooleanValue REPLANT_SAPLINGS;
@@ -17,8 +16,7 @@ public class MiniMeConfig {
     public static final ModConfigSpec.BooleanValue MINING_ENABLED;
     public static final ModConfigSpec.BooleanValue MINING_DAMAGE_TOOLS;
     public static final ModConfigSpec.IntValue MAX_QUARRY_WIDTH;
-    public static final ModConfigSpec.IntValue MAX_QUARRY_DEPTH;
-    public static final ModConfigSpec.IntValue MINING_DUMP_EVERY;
+    public static final ModConfigSpec.IntValue MINING_DEFAULT_DUMP_AFTER;
 
     public static final ModConfigSpec.BooleanValue SHEARING_ENABLED;
     public static final ModConfigSpec.BooleanValue SHEARING_DAMAGE_TOOLS;
@@ -28,7 +26,13 @@ public class MiniMeConfig {
     public static final ModConfigSpec.BooleanValue COLLECT_ITEMS;
     public static final ModConfigSpec.IntValue COLLECT_RADIUS;
 
+    public static final ModConfigSpec.IntValue FACTORY_RADIUS;
+    public static final ModConfigSpec.IntValue CONSTRUCTOR_ENERGY;
+    public static final ModConfigSpec.DoubleValue CONSTRUCTOR_HEALTH_COST;
+    public static final ModConfigSpec.BooleanValue CONSTRUCTOR_WARN_INSTEAD_OF_KILLING;
+
     public static final ModConfigSpec.BooleanValue DUMP_TO_CHEST;
+    public static final ModConfigSpec.IntValue MAX_CHEST_AREA_SIZE;
 
     public static final ModConfigSpec SPEC;
 
@@ -37,6 +41,9 @@ public class MiniMeConfig {
         DEFAULT_HOME_RADIUS = BUILDER
                 .comment("Radius (in blocks) of the working area around a Mini Me's home.")
                 .defineInRange("defaultHomeRadius", 8, 2, 32);
+        MAX_AREA_OFFSET = BUILDER
+                .comment("How far (in blocks) the quarry or the chest search area can be moved away from the home block.")
+                .defineInRange("maxAreaOffset", 32, 0, 128);
         BUILDER.pop();
 
         BUILDER.push("treeFarming");
@@ -64,16 +71,13 @@ public class MiniMeConfig {
                 .comment("Mining damages the pickaxe, and a broken pickaxe is lost.")
                 .define("damageTools", true);
         MAX_QUARRY_WIDTH = BUILDER
-                .comment("Widest quarry (in blocks) that can be chosen in the task screen.",
-                        "It is also limited to the width of the Mini Me's working area.")
+                .comment("Longest side (in blocks) that can be chosen for the quarry in the task screen.")
                 .defineInRange("maxQuarryWidth", 15, 1, 63);
-        MAX_QUARRY_DEPTH = BUILDER
-                .comment("How many layers deep a quarry goes, counting down from the layer under the home block.")
-                .defineInRange("maxQuarryDepth", 16, 1, 256);
-        MINING_DUMP_EVERY = BUILDER
-                .comment("After mining this many blocks the Mini Me walks to the chest near home and empties its",
-                        "inventory before carrying on (needs the 'Use chest' job and a chest). 0 = only when full.")
-                .defineInRange("dumpEveryBlocks", 8, 0, 256);
+        MINING_DEFAULT_DUMP_AFTER = BUILDER
+                .comment("Starting value of a Mini Me's 'Dump after' setting (changeable in its Tasks screen): after",
+                        "collecting this many items from mining it walks to a chest near home and empties its",
+                        "inventory before carrying on. Needs the 'Use chest' job and a chest. 0 = only when full.")
+                .defineInRange("defaultDumpAfterItems", 16, 0, 512);
         BUILDER.pop();
 
         BUILDER.push("shearing");
@@ -100,10 +104,34 @@ public class MiniMeConfig {
                 .defineInRange("collectRadius", 10, 1, 32);
         BUILDER.pop();
 
+        BUILDER.push("constructor");
+        CONSTRUCTOR_ENERGY = BUILDER
+                .comment("FE a Mini Me Constructor needs to build one Mini Me. Any energy source can power it, for example",
+                        "a NeoSync treadmill placed against it.")
+                .defineInRange("energyPerMiniMe", 20000, 100, 10000000);
+        CONSTRUCTOR_HEALTH_COST = BUILDER
+                .comment("Health points taken from the player who right-clicks a Mini Me Constructor to start a build.",
+                        "20 is ten hearts, the same as NeoSync. 0 turns the cost off.")
+                .defineInRange("healthCost", 20.0D, 0.0D, 1000.0D);
+        CONSTRUCTOR_WARN_INSTEAD_OF_KILLING = BUILDER
+                .comment("If the cost would kill the player, warn them and do nothing instead.")
+                .define("warnInsteadOfKilling", false);
+        BUILDER.pop();
+
+        BUILDER.push("factory");
+        FACTORY_RADIUS = BUILDER
+                .comment("How far (in blocks, in every direction) from a Mini Me Factory its chests and machines can be.",
+                        "1 = the 3x3x3 cube around the factory.")
+                .defineInRange("areaRadius", 1, 1, 3);
+        BUILDER.pop();
+
         BUILDER.push("storage");
         DUMP_TO_CHEST = BUILDER
                 .comment("Empty its inventory into a chest near home.")
                 .define("dumpToChest", true);
+        MAX_CHEST_AREA_SIZE = BUILDER
+                .comment("Longest side (in blocks) that can be chosen for the area searched for a chest.")
+                .defineInRange("maxChestAreaSize", 33, 1, 127);
         BUILDER.pop();
 
         SPEC = BUILDER.build();

@@ -9,7 +9,6 @@ import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 
 @EventBusSubscriber(modid = MiniMe.MOD_ID)
 public class AttributeEvent {
-
     @SubscribeEvent
     public static void onAttributeCreate(EntityAttributeCreationEvent event) {
         event.put(MMEntities.MINI_ME.get(), MiniMeEntity.createAttributes().build());

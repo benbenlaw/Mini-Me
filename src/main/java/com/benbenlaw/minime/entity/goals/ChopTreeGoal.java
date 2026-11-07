@@ -9,7 +9,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -27,9 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-
 public class ChopTreeGoal extends Goal {
-
     private static final int SEARCH_RADIUS = 12;
     private static final int SEARCH_HEIGHT = 20;
     private static final int MIN_NATURAL_LEAVES = 4;
@@ -54,8 +51,7 @@ public class ChopTreeGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.TREE_FARMING_ENABLED.get() || !miniMe.isTaskEnabled(MiniMeTask.CHOP_TREES)) return false;
-        if (!miniMe.getMainHandItem().is(ItemTags.AXES)) return false;
+        if (!MiniMeConfig.TREE_FARMING_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.CHOP_TREES)) return false;
         if (miniMe.getHomePos() == null) return false;
 
         if (scanCooldown > 0) {
@@ -69,7 +65,7 @@ public class ChopTreeGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        return !logsToChop.isEmpty() && miniMe.getMainHandItem().is(ItemTags.AXES);
+        return !logsToChop.isEmpty() && miniMe.isTaskActive(MiniMeTask.CHOP_TREES);
     }
 
     @Override
@@ -83,7 +79,6 @@ public class ChopTreeGoal extends Goal {
         if (treeBase == null) return;
         Level level = miniMe.level();
 
-        // Skip logs that were already removed by something else.
         while (!logsToChop.isEmpty() && !level.getBlockState(logsToChop.peekFirst()).is(BlockTags.LOGS)) {
             logsToChop.pollFirst();
         }
@@ -117,7 +112,6 @@ public class ChopTreeGoal extends Goal {
             serverLevel.destroyBlock(target, true, miniMe);
             logsToChop.pollFirst();
 
-            // The stack is shared with the inventory, so a broken axe empties its slot too.
             if (MiniMeConfig.DAMAGE_TOOLS.get()) {
                 miniMe.getMainHandItem().hurtAndBreak(1, miniMe, EquipmentSlot.MAINHAND);
                 miniMe.getInventory().setChanged();
@@ -194,10 +188,10 @@ public class ChopTreeGoal extends Goal {
                     pos.set(home.getX() + x, home.getY() + y, home.getZ() + z);
 
                     if (!level.getBlockState(pos).is(BlockTags.LOGS)) continue;
-                    if (level.getBlockState(pos.below()).is(BlockTags.LOGS)) continue; // not the bottom of a column
+                    if (level.getBlockState(pos.below()).is(BlockTags.LOGS)) continue;
 
                     BlockPos start = pos.immutable();
-                    if (!miniMe.isWithinHomeDistance(start)) continue; // only the base has to be in the working area
+                    if (!miniMe.isWithinHomeDistance(start)) continue;
                     if (alreadyChecked.contains(start)) continue;
 
                     List<BlockPos> cluster = collectLogs(level, start);

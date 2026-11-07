@@ -1,0 +1,12 @@
+{
+  "block.minime.instruction_desk": "Instruction Desk",
+  "block.minime.mini_me_constructor": "Mini Me Constructor",
+  "block.minime.mini_me_factory": "Mini Me Factory",
+  "entity.minime.mini_me": "Mini Me",
+  "item.minime.command_tool": "Mini Me Command Tool",
+  "item.minime.instructions": "Mini Me Instructions",
+  "itemGroup.minime": "Mini Me",
+  "tooltip.minime.instruction_desk": "Insert Mini Me Instructions and pay items to write jobs onto them.",
+  "tooltip.minime.instructions": "Put in a Mini Me's off hand to give it jobs",
+  "tooltip.minime.instructions_header": "Instructions:"
+}

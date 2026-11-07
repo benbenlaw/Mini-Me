@@ -5,7 +5,6 @@ import net.minecraft.world.Container;
 import net.minecraft.world.inventory.Slot;
 
 public class MenuSlot extends Slot {
-
     private final MiniMeMenu menu;
 
     public MenuSlot(MiniMeMenu menu, Container container, int index, int x, int y) {

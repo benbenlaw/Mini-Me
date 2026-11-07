@@ -11,7 +11,6 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import java.util.EnumSet;
 
 public class DumpInventoryGoal extends Goal {
-
     private enum Phase { WALKING, OPENING, CLOSING, DONE }
 
     private static final int OPEN_TIME = 15;
@@ -34,7 +33,7 @@ public class DumpInventoryGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.DUMP_TO_CHEST.get() || !miniMe.isTaskEnabled(MiniMeTask.DUMP)) return false;
+        if (!MiniMeConfig.DUMP_TO_CHEST.get() || !miniMe.isTaskActive(MiniMeTask.DUMP)) return false;
 
         if (cooldown > 0) {
             cooldown--;
@@ -42,7 +41,7 @@ public class DumpInventoryGoal extends Goal {
         }
         if (!(miniMe.findChestNearHome() instanceof ChestBlockEntity)) return false;
 
-        for (int i = MiniMeEntity.FIRST_STORAGE_SLOT; i < miniMe.getInventory().getContainerSize(); i++) {
+        for (int i = MiniMeEntity.FIRST_STORAGE_SLOT; i < MiniMeEntity.END_STORAGE_SLOT; i++) {
             if (!miniMe.getInventory().getItem(i).isEmpty()) {
                 return true;
             }
@@ -110,7 +109,7 @@ public class DumpInventoryGoal extends Goal {
         }
         phase = Phase.DONE;
         cooldown = COOLDOWN;
-        miniMe.resetMinedCount(); // whether or not the trip worked, let mining carry on
+        miniMe.resetMinedCount();
         miniMe.getNavigation().stop();
     }
 

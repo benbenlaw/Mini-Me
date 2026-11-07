@@ -19,8 +19,8 @@ public class CollectLootGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.COLLECT_ITEMS.get() || !miniMe.isTaskEnabled(MiniMeTask.COLLECT) || !miniMe.canPickUpLoot()) return false;
-        if (miniMe.getTarget() != null) return false; // Don't loot while fighting
+        if (!MiniMeConfig.COLLECT_ITEMS.get() || !miniMe.isTaskActive(MiniMeTask.COLLECT) || !miniMe.canPickUpLoot()) return false;
+        if (miniMe.getTarget() != null) return false;
 
         double bestDistance = Double.MAX_VALUE;
         targetItem = null;
@@ -49,6 +49,7 @@ public class CollectLootGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         return targetItem != null
+                && miniMe.isTaskActive(MiniMeTask.COLLECT)
                 && targetItem.isAlive()
                 && miniMe.distanceToSqr(targetItem) > 2.0D;
     }
@@ -57,7 +58,6 @@ public class CollectLootGoal extends Goal {
     public void tick() {
         if (targetItem != null) {
             miniMe.getNavigation().moveTo(targetItem.getX(), targetItem.getY(), targetItem.getZ(), 0, 1.0D);
-
         }
     }
 }

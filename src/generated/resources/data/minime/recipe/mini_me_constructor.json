@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "G": "minecraft:gold_block",
+    "H": "minecraft:player_head",
+    "I": "minecraft:iron_ingot",
+    "R": "minecraft:redstone"
+  },
+  "pattern": [
+    "IHI",
+    "RGR",
+    "III"
+  ],
+  "result": {
+    "id": "minime:mini_me_constructor"
+  }
+}

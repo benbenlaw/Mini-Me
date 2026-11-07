@@ -11,13 +11,12 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import java.util.function.Supplier;
 
 public class MMEntities {
-
     public static final DeferredRegister<EntityType<?>> ENTITIES = DeferredRegister.create(Registries.ENTITY_TYPE, MiniMe.MOD_ID);
 
     public static final Supplier<EntityType<MiniMeEntity>> MINI_ME =
             ENTITIES.register("mini_me", () ->
                     EntityType.Builder.of(MiniMeEntity::new, MobCategory.CREATURE)
                             .sized(0.5f, 0.9f)
-                            .build(ResourceKey.create(Registries.ENTITY_TYPE, Identifier.fromNamespaceAndPath(MiniMe.MOD_ID, "mini_me")))
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, MiniMe.identifier( "mini_me")))
             );
 }

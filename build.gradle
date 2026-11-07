@@ -77,6 +77,13 @@ dependencies {
 
     //JEI
     implementation("mezz.jei:jei-${jei_mc_version}-neoforge:${jei_version}")
+
+    //BBL Core
+    implementation("curse.maven:bbl-core-1135181:${core_version}")
+
+    //Neosync
+    compileOnly("curse.maven:neosync-1521718:9457952")
+    runtimeOnly("curse.maven:neosync-1521718:9457952")
 }
 
 tasks.withType(ProcessResources).configureEach {

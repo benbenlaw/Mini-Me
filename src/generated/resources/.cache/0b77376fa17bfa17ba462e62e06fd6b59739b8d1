@@ -1,0 +1,14 @@
+// 26.1.2	2026-11-07T09:40:54.2770665	Model Definitions - minime
+f8decc21391290f7b980bdb3c1f5fe586987a922 assets/minime/blockstates/instruction_desk.json
+a8ce0b10d021a62c6f8fade88f6ad6e546c4eaaa assets/minime/blockstates/mini_me_constructor.json
+1bff8c13339b3b066a361f5fe7ebc1c44534d33f assets/minime/blockstates/mini_me_factory.json
+b340d4fd27e7b9179550418aec54c46ecdb89b0c assets/minime/items/command_tool.json
+c5caf9ab0e2d14d725f51a8e15205fd3529e70d6 assets/minime/items/instructions.json
+5b54a13e2a0dae1611aa6554ff8cfea0d96ff14c assets/minime/items/instruction_desk.json
+567da56a7a1e511b87e824199eee82c5a2ff8477 assets/minime/items/mini_me_constructor.json
+6478162e7d43d8dc270a2570fb365234672b8af1 assets/minime/items/mini_me_factory.json
+5b76898737acb8ffed976117f088f87bd727fb0a assets/minime/models/block/instruction_desk.json
+71d5ddc1eb19dca644d260c9d8767787cc90f0f9 assets/minime/models/block/mini_me_constructor.json
+51e463fdc3f68dffed7a3123b32a8a98b349bf3b assets/minime/models/block/mini_me_factory.json
+235e51f5614c29ccf79ce113c324df3c4840a44b assets/minime/models/item/command_tool.json
+742cd638bd6a113ddae59d8a131f25cb2b1ab727 assets/minime/models/item/instructions.json

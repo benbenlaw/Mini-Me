@@ -18,7 +18,6 @@ import java.util.EnumSet;
 import java.util.Iterator;
 
 public class ReplantSaplingGoal extends Goal {
-
     private static final int SCAN_INTERVAL = 20;
     private static final int MAX_TICKS = 200;
     private static final double REACH_SQR = 2.5D * 2.5D;
@@ -37,8 +36,7 @@ public class ReplantSaplingGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!MiniMeConfig.TREE_FARMING_ENABLED.get() || !MiniMeConfig.REPLANT_SAPLINGS.get()) return false;
-        if (!miniMe.isTaskEnabled(MiniMeTask.REPLANT)) return false;
-        if (!miniMe.getMainHandItem().is(ItemTags.AXES)) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.REPLANT)) return false;
         if (miniMe.getReplantSpots().isEmpty()) return false;
 
         if (scanCooldown > 0) {
@@ -53,7 +51,7 @@ public class ReplantSaplingGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        return target != null && ticks < MAX_TICKS && canPlant(target);
+        return target != null && miniMe.isTaskActive(MiniMeTask.REPLANT) && ticks < MAX_TICKS && canPlant(target);
     }
 
     @Override
@@ -112,7 +110,7 @@ public class ReplantSaplingGoal extends Goal {
             MiniMeEntity.ReplantSpot spot = iterator.next();
             BlockState state = miniMe.level().getBlockState(spot.pos());
 
-            if (state.is(BlockTags.LOGS)) continue; // tree not chopped down yet
+            if (state.is(BlockTags.LOGS)) continue;
 
             if (!state.isAir() && !state.canBeReplaced()) {
                 iterator.remove();
@@ -142,7 +140,7 @@ public class ReplantSaplingGoal extends Goal {
 
     private int findSaplingSlot(MiniMeEntity.ReplantSpot spot) {
         int fallback = -1;
-        for (int i = MiniMeEntity.FIRST_STORAGE_SLOT; i < miniMe.getInventory().getContainerSize(); i++) {
+        for (int i = MiniMeEntity.FIRST_STORAGE_SLOT; i < MiniMeEntity.END_STORAGE_SLOT; i++) {
             ItemStack stack = miniMe.getInventory().getItem(i);
             if (stack.isEmpty() || !stack.is(ItemTags.SAPLINGS)) continue;
 

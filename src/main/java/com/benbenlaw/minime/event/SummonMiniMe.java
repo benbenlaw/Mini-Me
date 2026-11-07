@@ -14,7 +14,6 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 @EventBusSubscriber(modid = MiniMe.MOD_ID)
 public class SummonMiniMe {
-
     @SubscribeEvent
     public static void onBlockInteract(PlayerInteractEvent.RightClickBlock event) {
         BlockPos pos = event.getPos();
@@ -22,7 +21,6 @@ public class SummonMiniMe {
         BlockState belowState = event.getLevel().getBlockState(pos.below());
 
         if (state.is(Blocks.PLAYER_HEAD) && belowState.is(Blocks.GOLD_BLOCK)) {
-
             MiniMeEntity miniMe = MMEntities.MINI_ME.get().create(event.getLevel(), EntitySpawnReason.SPAWN_ITEM_USE);
             if (miniMe == null) return;
 
@@ -42,7 +40,6 @@ public class SummonMiniMe {
 
             event.getLevel().setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
             event.getLevel().setBlockAndUpdate(pos.below(), Blocks.AIR.defaultBlockState());
-
         }
     }
 }

@@ -10,7 +10,6 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 
 @EventBusSubscriber(modid = MiniMe.MOD_ID, value = Dist.CLIENT)
 public class ClientRenderer {
-
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(MMEntities.MINI_ME.get(), MiniMeRenderer::new);
