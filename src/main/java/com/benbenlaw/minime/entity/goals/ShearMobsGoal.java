@@ -35,7 +35,7 @@ public class ShearMobsGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.SHEARING_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.SHEAR)) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.SHEAR)) return false;
         if (!miniMe.getMainHandItem().is(Tags.Items.TOOLS_SHEAR)) return false;
         if (miniMe.getHomePos() == null) return false;
 
@@ -78,7 +78,7 @@ public class ShearMobsGoal extends Goal {
         ((Shearable) target).shear((ServerLevel) miniMe.level(), SoundSource.NEUTRAL, shears);
         miniMe.swing(InteractionHand.MAIN_HAND);
 
-        if (MiniMeConfig.SHEARING_DAMAGE_TOOLS.get()) {
+        if (MiniMeConfig.DAMAGE_TOOLS.get()) {
             shears.hurtAndBreak(1, miniMe, EquipmentSlot.MAINHAND);
             miniMe.getInventory().setChanged();
         }

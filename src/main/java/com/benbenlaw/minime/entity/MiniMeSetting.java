@@ -17,6 +17,10 @@ public enum MiniMeSetting {
     CHEST_OFFSET_Z;
 
     private static final int MAX_DUMP_AFTER = 512;
+    private static final int DEFAULT_DUMP_AFTER = 16;
+    private static final int MAX_AREA_OFFSET = 32;
+    private static final int MAX_CHEST_AREA_SIZE = 33;
+    private static final int MAX_QUARRY_WIDTH = 15;
     private static final int DEPTH_LIMIT = 4095;
 
     public int step() {
@@ -33,7 +37,7 @@ public enum MiniMeSetting {
 
     public int min() {
         if (isSize()) return 1;
-        if (isOffset()) return -MiniMeConfig.MAX_AREA_OFFSET.get();
+        if (isOffset()) return -MAX_AREA_OFFSET;
         return switch (this) {
             case DUMP_AFTER -> 0;
             default -> -DEPTH_LIMIT;
@@ -41,9 +45,9 @@ public enum MiniMeSetting {
     }
 
     public int max() {
-        if (name().startsWith("CHEST_") && isSize()) return MiniMeConfig.MAX_CHEST_AREA_SIZE.get();
-        if (isSize()) return MiniMeConfig.MAX_QUARRY_WIDTH.get();
-        if (isOffset()) return MiniMeConfig.MAX_AREA_OFFSET.get();
+        if (name().startsWith("CHEST_") && isSize()) return MAX_CHEST_AREA_SIZE;
+        if (isSize()) return MAX_QUARRY_WIDTH;
+        if (isOffset()) return MAX_AREA_OFFSET;
         return switch (this) {
             case DUMP_AFTER -> MAX_DUMP_AFTER;
             default -> DEPTH_LIMIT;
@@ -62,7 +66,7 @@ public enum MiniMeSetting {
             value = switch (this) {
                 case MIN_DEPTH -> 1;
                 case MAX_DEPTH -> 16;
-                default -> MiniMeConfig.MINING_DEFAULT_DUMP_AFTER.get();
+                default -> DEFAULT_DUMP_AFTER;
             };
         }
         return clamp(value);

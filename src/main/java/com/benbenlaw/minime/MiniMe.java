@@ -35,7 +35,7 @@ public class MiniMe {
     public static final Logger LOGGER = LogManager.getLogger();
 
     public MiniMe(final IEventBus eventBus, final ModContainer modContainer) {
-        modContainer.registerConfig(ModConfig.Type.COMMON, MiniMeConfig.SPEC);
+        modContainer.registerConfig(ModConfig.Type.COMMON, MiniMeConfig.SPEC, "bbl/minime-common.toml");
 
         MMEntities.ENTITIES.register(eventBus);
         MMItems.ITEMS.register(eventBus);

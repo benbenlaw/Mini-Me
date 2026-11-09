@@ -573,7 +573,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
             return false;
         }
 
-        return isTaskActive(MiniMeTask.DUMP) && MiniMeConfig.DUMP_TO_CHEST.get() && findChestNearHome() != null;
+        return isTaskActive(MiniMeTask.DUMP) && findChestNearHome() != null;
     }
 
     public int getSettingMin(MiniMeSetting setting) {
@@ -677,7 +677,7 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
 
     @Override
     public boolean canPickUpLoot() {
-        return MiniMeConfig.COLLECT_ITEMS.get();
+        return true;
     }
 
     public void setHome(@Nullable BlockPos pos, int radius) {

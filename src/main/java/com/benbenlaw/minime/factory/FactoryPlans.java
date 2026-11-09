@@ -29,7 +29,12 @@ public final class FactoryPlans {
         if (target.isEmpty()) return found;
 
         for (RecipeHolder<?> holder : level.getServer().getRecipeManager().getRecipes()) {
-            FactoryPlan plan = plan(holder.value());
+            FactoryPlan plan;
+            try {
+                plan = plan(holder.value());
+            } catch (RuntimeException e) {
+                continue;
+            }
             if (plan != null && ItemStack.isSameItemSameComponents(plan.result(), target)) found.add(plan);
         }
         found.sort(Comparator.comparingInt(plan -> plan.kind().ordinal()));
@@ -53,9 +58,32 @@ public final class FactoryPlans {
             CraftingRecipe crafting = (CraftingRecipe) recipe;
             List<Ingredient> ingredients = crafting.placementInfo().ingredients();
             if (ingredients.isEmpty()) return null;
-            return build(FactoryPlan.Kind.CRAFT, ingredients, crafting.assemble(CraftingInput.EMPTY));
+            ItemStack result = assembleCrafting(crafting, ingredients);
+            if (result == null) return null;
+            return build(FactoryPlan.Kind.CRAFT, ingredients, result);
         }
         return null;
+    }
+
+    private static ItemStack assembleCrafting(CraftingRecipe crafting, List<Ingredient> ingredients) {
+        List<ItemStack> stacks = new ArrayList<>();
+        for (Ingredient ingredient : ingredients) {
+            stacks.add(ingredient.items().findFirst().map(ItemStack::new).orElse(ItemStack.EMPTY));
+        }
+
+        int width = 3;
+        int height = 3;
+        if (crafting instanceof ShapedRecipe shaped) {
+            width = Math.max(3, shaped.getWidth());
+            height = Math.max(3, shaped.getHeight());
+        }
+        while (stacks.size() < width * height) stacks.add(ItemStack.EMPTY);
+
+        try {
+            return crafting.assemble(CraftingInput.of(width, height, stacks));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static FactoryPlan build(FactoryPlan.Kind kind, List<Ingredient> ingredients, ItemStack result) {

@@ -39,7 +39,7 @@ public class MineQuarryGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.MINING_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.MINE)) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.MINE)) return false;
         if (miniMe.getHomePos() == null || !miniMe.hasStorageSpace()) return false;
         if (miniMe.shouldDumpMinedItems()) return false;
 
@@ -131,7 +131,7 @@ public class MineQuarryGoal extends Goal {
         level.destroyBlock(pos, false, miniMe);
         miniMe.noteItemsMined(collected);
 
-        if (MiniMeConfig.MINING_DAMAGE_TOOLS.get()) {
+        if (MiniMeConfig.DAMAGE_TOOLS.get()) {
             tool.hurtAndBreak(1, miniMe, EquipmentSlot.MAINHAND);
             miniMe.getInventory().setChanged();
         }

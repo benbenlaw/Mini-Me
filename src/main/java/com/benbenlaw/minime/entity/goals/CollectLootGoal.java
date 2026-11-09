@@ -1,6 +1,5 @@
 package com.benbenlaw.minime.entity.goals;
 
-import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.entity.MiniMeEntity;
 import com.benbenlaw.minime.entity.MiniMeTask;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -9,6 +8,8 @@ import net.minecraft.world.entity.item.ItemEntity;
 import java.util.EnumSet;
 
 public class CollectLootGoal extends Goal {
+    private static final double COLLECT_RADIUS = 10.0D;
+
     private final MiniMeEntity miniMe;
     private ItemEntity targetItem;
 
@@ -19,7 +20,7 @@ public class CollectLootGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.COLLECT_ITEMS.get() || !miniMe.isTaskActive(MiniMeTask.COLLECT) || !miniMe.canPickUpLoot()) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.COLLECT) || !miniMe.canPickUpLoot()) return false;
         if (miniMe.getTarget() != null) return false;
 
         double bestDistance = Double.MAX_VALUE;
@@ -27,7 +28,7 @@ public class CollectLootGoal extends Goal {
 
         for (ItemEntity item : miniMe.level().getEntitiesOfClass(
                 ItemEntity.class,
-                miniMe.getBoundingBox().inflate(MiniMeConfig.COLLECT_RADIUS.get())
+                miniMe.getBoundingBox().inflate(COLLECT_RADIUS)
         )) {
             if (!item.isAlive()) continue;
 

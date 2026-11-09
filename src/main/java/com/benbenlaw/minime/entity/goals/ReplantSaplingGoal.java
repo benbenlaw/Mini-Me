@@ -1,6 +1,5 @@
 package com.benbenlaw.minime.entity.goals;
 
-import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.entity.MiniMeEntity;
 import com.benbenlaw.minime.entity.MiniMeTask;
 import net.minecraft.core.BlockPos;
@@ -35,7 +34,6 @@ public class ReplantSaplingGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.TREE_FARMING_ENABLED.get() || !MiniMeConfig.REPLANT_SAPLINGS.get()) return false;
         if (!miniMe.isTaskActive(MiniMeTask.REPLANT)) return false;
         if (miniMe.getReplantSpots().isEmpty()) return false;
 

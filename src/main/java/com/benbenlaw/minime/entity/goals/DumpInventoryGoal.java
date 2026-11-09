@@ -1,6 +1,5 @@
 package com.benbenlaw.minime.entity.goals;
 
-import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.entity.MiniMeEntity;
 import com.benbenlaw.minime.entity.MiniMeTask;
 import net.minecraft.core.BlockPos;
@@ -33,7 +32,7 @@ public class DumpInventoryGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.DUMP_TO_CHEST.get() || !miniMe.isTaskActive(MiniMeTask.DUMP)) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.DUMP)) return false;
 
         if (cooldown > 0) {
             cooldown--;

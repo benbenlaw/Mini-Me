@@ -51,7 +51,7 @@ public class ChopTreeGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.TREE_FARMING_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.CHOP_TREES)) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.CHOP_TREES)) return false;
         if (miniMe.getHomePos() == null) return false;
 
         if (scanCooldown > 0) {
@@ -217,7 +217,7 @@ public class ChopTreeGoal extends Goal {
         logsToChop.addAll(best);
         treeBase = best.stream().min(Comparator.comparingInt((BlockPos p) -> p.getY())).orElseThrow();
 
-        if (MiniMeConfig.REPLANT_SAPLINGS.get()) queueReplants(level, best);
+        queueReplants(level, best);
         return true;
     }
 

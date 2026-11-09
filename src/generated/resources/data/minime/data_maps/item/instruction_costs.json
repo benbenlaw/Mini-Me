@@ -3,21 +3,21 @@
     "#c:tools/shear": [
       "shear"
     ],
+    "#minecraft:axes": [
+      "chop_trees",
+      "replant"
+    ],
+    "#minecraft:pickaxes": [
+      "mine"
+    ],
+    "#minecraft:swords": [
+      "combat"
+    ],
     "minecraft:chest": [
       "dump"
     ],
     "minecraft:crafting_table": [
       "factory"
-    ],
-    "minecraft:diamond_axe": [
-      "chop_trees",
-      "replant"
-    ],
-    "minecraft:diamond_pickaxe": [
-      "mine"
-    ],
-    "minecraft:diamond_sword": [
-      "combat"
     ],
     "minecraft:hopper": [
       "collect"

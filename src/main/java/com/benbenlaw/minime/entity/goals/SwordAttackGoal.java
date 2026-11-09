@@ -1,6 +1,5 @@
 package com.benbenlaw.minime.entity.goals;
 
-import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.entity.MiniMeEntity;
 import com.benbenlaw.minime.entity.MiniMeTask;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
@@ -15,7 +14,7 @@ public class SwordAttackGoal extends MeleeAttackGoal {
 
     @Override
     public boolean canUse() {
-        if (!MiniMeConfig.COMBAT_ENABLED.get() || !miniMe.isTaskActive(MiniMeTask.COMBAT)) return false;
+        if (!miniMe.isTaskActive(MiniMeTask.COMBAT)) return false;
 
         boolean isInRange = this.miniMe.isWithinHomeDistance(this.miniMe.getHomePos());
         return super.canUse() && isInRange;

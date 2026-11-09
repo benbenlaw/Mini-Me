@@ -6,6 +6,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.data.PackOutput;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.common.Tags;
@@ -22,9 +23,9 @@ public class MMDataMapProvider extends DataMapProvider {
     @Override
     protected void gather(HolderLookup.Provider provider) {
         builder(MMDataMaps.INSTRUCTION_COSTS)
-                .add(id(Items.DIAMOND_PICKAXE), List.of(MiniMeTask.MINE), false)
-                .add(id(Items.DIAMOND_AXE), List.of(MiniMeTask.CHOP_TREES, MiniMeTask.REPLANT), false)
-                .add(id(Items.DIAMOND_SWORD), List.of(MiniMeTask.COMBAT), false)
+                .add(ItemTags.PICKAXES, List.of(MiniMeTask.MINE), false)
+                .add(ItemTags.AXES, List.of(MiniMeTask.CHOP_TREES, MiniMeTask.REPLANT), false)
+                .add(ItemTags.SWORDS, List.of(MiniMeTask.COMBAT), false)
                 .add(Tags.Items.TOOLS_SHEAR, List.of(MiniMeTask.SHEAR), false)
                 .add(id(Items.HOPPER), List.of(MiniMeTask.COLLECT), false)
                 .add(id(Items.CHEST), List.of(MiniMeTask.DUMP), false)
