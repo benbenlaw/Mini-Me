@@ -46,7 +46,7 @@ public class MiniMeConfig {
 
         BUILDER.push("factory");
         FACTORY_RADIUS = BUILDER
-                .comment("How far (in blocks, in every direction) from a Mini Me Factory its chests and machines can be.",
+                .comment("How far (in blocks, in every direction) from a Mini Me Factory its chests can be.",
                         "1 = the 3x3x3 cube around the factory.")
                 .defineInRange("areaRadius", 1, 1, 3);
         BUILDER.pop();

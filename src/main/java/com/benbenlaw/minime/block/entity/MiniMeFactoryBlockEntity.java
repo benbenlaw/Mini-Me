@@ -104,6 +104,14 @@ public class MiniMeFactoryBlockEntity extends SyncableBlockEntity implements Men
         changed();
     }
 
+    public void moveOrderTo(int from, int to) {
+        if (from < 0 || from >= orders.size() || to < 0 || to >= orders.size() || from == to) return;
+
+        orders.add(to, orders.remove(from));
+        if (from < stocks.size() && to < stocks.size()) stocks.add(to, stocks.remove(from));
+        changed();
+    }
+
     public void moveOrder(int index, int direction) {
         int target = index + direction;
         if (index < 0 || index >= orders.size() || target < 0 || target >= orders.size()) return;
@@ -201,16 +209,6 @@ public class MiniMeFactoryBlockEntity extends SyncableBlockEntity implements Men
                 continue;
             }
             found.add(pos);
-        }
-        return found;
-    }
-
-    public List<BlockPos> machines() {
-        List<BlockPos> found = new ArrayList<>();
-        if (level == null) return found;
-
-        for (BlockPos pos : containers()) {
-            if (!(level.getBlockEntity(pos) instanceof RandomizableContainerBlockEntity)) found.add(pos);
         }
         return found;
     }

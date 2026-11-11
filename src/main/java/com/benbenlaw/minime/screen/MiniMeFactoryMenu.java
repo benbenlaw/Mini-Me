@@ -195,9 +195,30 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
 
     @Override
     public void clicked(int slotId, int button, ContainerInput input, Player clicker) {
+        if (slotId == 0 && input == ContainerInput.QUICK_MOVE) {
+            craftOneStack(clicker);
+            return;
+        }
+
         ItemStack[] before = slotId == 0 ? snapshotGrid() : null;
         super.clicked(slotId, button, input, clicker);
         if (before != null) refill(before);
+    }
+
+    private void craftOneStack(Player clicker) {
+        ItemStack first = slots.get(0).getItem();
+        if (first.isEmpty()) return;
+
+        int limit = first.getMaxStackSize();
+        int made = 0;
+        while (true) {
+            ItemStack result = slots.get(0).getItem();
+            if (result.isEmpty() || !ItemStack.isSameItemSameComponents(result, first) || made + result.getCount() > limit) break;
+
+            ItemStack moved = quickMoveStack(clicker, 0);
+            if (moved.isEmpty()) break;
+            made += moved.getCount();
+        }
     }
 
     @Override

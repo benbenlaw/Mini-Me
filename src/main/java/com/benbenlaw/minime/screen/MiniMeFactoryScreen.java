@@ -27,6 +27,14 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
     private static final Identifier TEXTURE = MiniMe.identifier( "textures/gui/mini_me_factory.png");
     private static final Identifier WRENCH_ICON = MiniMe.identifier( "wrench");
 
+    private static final Identifier SCROLL_ICON = MiniMe.identifier( "scroll");
+
+    private static final int SCROLLBAR_X = 154;
+    private static final int SCROLLBAR_Y = 22;
+    private static final int SCROLLBAR_WIDTH = 12;
+    private static final int SCROLLBAR_HEIGHT = 70;
+    private static final int SCROLLER_HEIGHT = 15;
+
     private static final float COUNT_SCALE = 0.55F;
 
     private static final int VIEW_X = 8;
@@ -35,10 +43,10 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
     private static final int ROWS = 4;
     private static final int CELL = 18;
 
-    private static final int SEARCH_X = 92;
+    private static final int SEARCH_X = 8;
     private static final int SEARCH_Y = 4;
-    private static final int SEARCH_WIDTH = 40;
-    private static final int SEARCH_HEIGHT = 12;
+    private static final int SEARCH_WIDTH = 124;
+    private static final int SEARCH_HEIGHT = 16;
 
     private static final int AREA_X = 134;
     private static final int CONFIG_X = 152;
@@ -57,6 +65,7 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
     private List<Shown> shown = List.of();
     private String filter = "";
     private int scroll;
+    private boolean draggingScrollbar;
 
     public MiniMeFactoryScreen(MiniMeFactoryMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title, 176, 245);
@@ -65,8 +74,7 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
     @Override
     protected void init() {
         super.init();
-        this.titleLabelX = 8;
-        this.titleLabelY = 6;
+        this.titleLabelX = 1000;
         this.inventoryLabelY = 152;
 
         this.searchBox = new EditBox(this.font, leftPos + SEARCH_X, topPos + SEARCH_Y, SEARCH_WIDTH, SEARCH_HEIGHT, Component.literal("Search"));
@@ -87,7 +95,7 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
                 .withTootip()
                 .build();
         config.setPosition(leftPos + CONFIG_X, topPos + CONFIG_Y);
-        config.setTooltip(Tooltip.create(Component.literal("Orders and stock levels for the Mini Me workers")));
+        config.setTooltip(Tooltip.create(Component.literal("Orders: what the Mini Me workers keep stocked.\nFirst slot is highest priority. Drag to reorder.\nScroll to change the amount (Shift 10, Ctrl 100).\nRight-click to remove. Click with an item to add.")));
         this.addRenderableWidget(config);
 
         this.areaButton = this.addRenderableWidget(Button.builder(Component.literal("[]"), button -> sendRaw(MiniMeFactoryMenu.BUTTON_TOGGLE_AREA))
@@ -209,11 +217,41 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
         }
 
         if (maxScroll() > 0) {
-            int trackHeight = ROWS * CELL - 2;
-            int thumbHeight = Math.max(8, trackHeight * ROWS / ((shown.size() + COLUMNS - 1) / COLUMNS));
-            int thumbY = topPos + VIEW_Y + (trackHeight - thumbHeight) * scroll / maxScroll();
-            graphics.fill(leftPos + 171, thumbY, leftPos + 173, thumbY + thumbHeight, 0xFF555555);
+            int thumbY = topPos + SCROLLBAR_Y + (SCROLLBAR_HEIGHT - SCROLLER_HEIGHT) * scroll / maxScroll();
+            graphics.blitSprite(RenderPipelines.GUI_TEXTURED, SCROLL_ICON, leftPos + SCROLLBAR_X, thumbY, SCROLLBAR_WIDTH, SCROLLER_HEIGHT);
         }
+    }
+
+    private boolean overScrollbar(double mouseX, double mouseY) {
+        return mouseX >= leftPos + SCROLLBAR_X && mouseX < leftPos + SCROLLBAR_X + SCROLLBAR_WIDTH
+                && mouseY >= topPos + SCROLLBAR_Y && mouseY < topPos + SCROLLBAR_Y + SCROLLBAR_HEIGHT;
+    }
+
+    private void scrollTo(double mouseY) {
+        int max = maxScroll();
+        if (max == 0) return;
+
+        double travel = SCROLLBAR_HEIGHT - SCROLLER_HEIGHT;
+        double fraction = (mouseY - topPos - SCROLLBAR_Y - SCROLLER_HEIGHT / 2.0) / travel;
+        scroll = Math.max(0, Math.min(max, (int) Math.round(fraction * max)));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        if (draggingScrollbar) {
+            scrollTo(event.y());
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (draggingScrollbar) {
+            draggingScrollbar = false;
+            return true;
+        }
+        return super.mouseReleased(event);
     }
 
     @Override
@@ -230,6 +268,12 @@ public class MiniMeFactoryScreen extends AbstractContainerScreen<MiniMeFactoryMe
         if (searchBox.isFocused() && !searchBox.isMouseOver(event.x(), event.y())) {
             searchBox.setFocused(false);
             this.setFocused(null);
+        }
+
+        if (event.button() == 0 && overScrollbar(event.x(), event.y()) && maxScroll() > 0) {
+            draggingScrollbar = true;
+            scrollTo(event.y());
+            return true;
         }
 
         if ((event.button() == 0 || event.button() == 1) && overView(event.x(), event.y())) {

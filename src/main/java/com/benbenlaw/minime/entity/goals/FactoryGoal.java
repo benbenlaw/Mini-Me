@@ -15,15 +15,6 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.AbstractFurnaceBlock;
-import net.minecraft.world.level.block.BlastFurnaceBlock;
-import net.minecraft.world.level.block.FurnaceBlock;
-import net.minecraft.world.level.block.SmokerBlock;
-import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.transfer.ResourceHandler;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.neoforge.transfer.item.VanillaContainerWrapper;
@@ -237,21 +228,8 @@ public class FactoryGoal extends Goal {
         for (MiniMeFactoryBlockEntity.Order order : orders) stocks.add(count(level, storages, order.item()));
         factory.setStocks(stocks);
 
-        for (MiniMeFactoryBlockEntity.Order order : orders) {
-            for (FactoryPlan plan : factory.plans(level, order.item())) {
-                if (!plan.kind().cooking()) continue;
-
-                Job collect = collectJob(level, plan, machines(level, plan.kind()), storages);
-                if (collect != null) {
-                    factory.setActive(plan.label());
-                    return collect;
-                }
-            }
-        }
-
         boolean anyNeeded = false;
         boolean anyRecipe = false;
-        boolean anyMachine = false;
         for (int i = 0; i < orders.size(); i++) {
             MiniMeFactoryBlockEntity.Order order = orders.get(i);
             if (stocks.get(i) >= order.amount()) continue;
@@ -259,15 +237,7 @@ public class FactoryGoal extends Goal {
 
             for (FactoryPlan plan : factory.plans(level, order.item())) {
                 anyRecipe = true;
-                Job next;
-                if (plan.kind().cooking()) {
-                    List<BlockPos> machines = machines(level, plan.kind());
-                    anyMachine |= !machines.isEmpty();
-                    next = feedJob(level, plan, machines, storages);
-                } else {
-                    anyMachine = true;
-                    next = craftJob(level, plan, storages);
-                }
+                Job next = craftJob(level, plan, storages);
                 if (next != null) {
                     factory.setActive(plan.label());
                     return next;
@@ -281,7 +251,7 @@ public class FactoryGoal extends Goal {
         } else if (!anyRecipe) {
             factory.setStatus(FactoryStatus.NO_RECIPE);
         } else {
-            factory.setStatus(anyMachine ? FactoryStatus.WAITING : FactoryStatus.NO_MACHINE);
+            factory.setStatus(FactoryStatus.WAITING);
         }
         return null;
     }
@@ -314,73 +284,6 @@ public class FactoryGoal extends Goal {
 
         Containers.dropItemStack(level, miniMe.getX(), miniMe.getY(), miniMe.getZ(), carried);
         miniMe.setFactoryCarry(ItemStack.EMPTY);
-        return null;
-    }
-
-    private List<BlockPos> machines(ServerLevel level, FactoryPlan.Kind kind) {
-        List<BlockPos> machines = new ArrayList<>();
-        for (BlockPos pos : factory.machines()) {
-            BlockEntity entity = level.getBlockEntity(pos);
-            if (entity == null || entity instanceof RandomizableContainerBlockEntity) continue;
-            if (fits(kind, level.getBlockState(pos))) machines.add(pos);
-        }
-        machines.sort((a, b) -> Double.compare(a.distSqr(factory.getBlockPos()), b.distSqr(factory.getBlockPos())));
-        return machines;
-    }
-
-    private static boolean fits(FactoryPlan.Kind kind, BlockState state) {
-        if (!(state.getBlock() instanceof AbstractFurnaceBlock)) return true;
-
-        return switch (kind) {
-            case SMELT -> state.getBlock() instanceof FurnaceBlock;
-            case BLAST -> state.getBlock() instanceof BlastFurnaceBlock;
-            case SMOKE -> state.getBlock() instanceof SmokerBlock;
-            default -> false;
-        };
-    }
-
-    private Job collectJob(ServerLevel level, FactoryPlan plan, List<BlockPos> machines, List<BlockPos> storages) {
-        Predicate<ItemResource> resultFilter = resource -> ItemStack.isSameItemSameComponents(resource.toStack(), plan.result());
-
-        for (BlockPos machine : machines) {
-            ResourceHandler<ItemResource> machineOut = FactoryTransfer.at(level, machine, Direction.DOWN);
-            for (BlockPos storage : storages) {
-                if (FactoryTransfer.canMove(machineOut, FactoryTransfer.at(level, storage, null), resultFilter, 64)) {
-                    return new Trip(machine, Direction.DOWN, resultFilter, 64, storage, null);
-                }
-            }
-        }
-        return null;
-    }
-
-    private Job feedJob(ServerLevel level, FactoryPlan plan, List<BlockPos> machines, List<BlockPos> storages) {
-        Ingredient ingredient = plan.ingredients().getFirst();
-        Predicate<ItemResource> ingredientFilter = resource -> ingredient.test(resource.toStack());
-        Predicate<ItemResource> fuelFilter = resource -> level.fuelValues().isFuel(resource.toStack());
-
-        for (BlockPos machine : machines) {
-            BlockEntity entity = level.getBlockEntity(machine);
-            boolean furnace = entity instanceof AbstractFurnaceBlockEntity;
-            AbstractFurnaceBlockEntity furnaceEntity = furnace ? (AbstractFurnaceBlockEntity) entity : null;
-
-            if (furnace && !furnaceEntity.getItem(0).isEmpty() && furnaceEntity.getItem(1).getCount() < 4) {
-                ResourceHandler<ItemResource> fuelSlot = FactoryTransfer.at(level, machine, Direction.NORTH);
-                for (BlockPos storage : storages) {
-                    if (FactoryTransfer.canMove(FactoryTransfer.at(level, storage, null), fuelSlot, fuelFilter, 4)) {
-                        return new Trip(storage, null, fuelFilter, 4, machine, Direction.NORTH);
-                    }
-                }
-            }
-
-            if (furnace && furnaceEntity.getItem(0).getCount() >= 8) continue;
-
-            ResourceHandler<ItemResource> machineIn = FactoryTransfer.at(level, machine, Direction.UP);
-            for (BlockPos storage : storages) {
-                if (FactoryTransfer.canMove(FactoryTransfer.at(level, storage, null), machineIn, ingredientFilter, 16)) {
-                    return new Trip(storage, null, ingredientFilter, 16, machine, Direction.UP);
-                }
-            }
-        }
         return null;
     }
 

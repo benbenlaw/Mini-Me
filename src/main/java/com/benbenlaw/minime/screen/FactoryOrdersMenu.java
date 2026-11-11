@@ -2,27 +2,21 @@ package com.benbenlaw.minime.screen;
 
 import com.benbenlaw.core.screen.SimpleAbstractContainerMenu;
 import com.benbenlaw.minime.block.entity.MiniMeFactoryBlockEntity;
-import com.benbenlaw.minime.screen.slot.FactoryPatternSlot;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.transfer.item.ItemResource;
-import net.neoforged.neoforge.transfer.item.ItemUtil;
 
 public class FactoryOrdersMenu extends SimpleAbstractContainerMenu {
-    public static final int PATTERN_SLOT_INDEX = 36;
     public static final int BUTTON_REMOVE_BASE = 1000;
-    public static final int BUTTON_UP_BASE = 2000;
-    public static final int BUTTON_DOWN_BASE = 3000;
+    public static final int BUTTON_MOVE_BASE = 4000;
+    public static final int BUTTON_ADD_CARRIED = 5000;
     public static final int BUTTON_AMOUNT_BASE = 100000;
     public static final int AMOUNT_RANGE = 4096;
-    public static final int PATTERN_SLOT_X = 9;
-    public static final int PATTERN_SLOT_Y = 36;
+    public static final int MOVE_RANGE = 32;
 
     private final MiniMeFactoryBlockEntity blockEntity;
     private final Level level;
@@ -33,12 +27,9 @@ public class FactoryOrdersMenu extends SimpleAbstractContainerMenu {
     }
 
     public FactoryOrdersMenu(int containerId, Inventory inventory, BlockPos pos) {
-        super(MMMenus.FACTORY_ORDERS_MENU.get(), containerId, inventory, pos, 1);
+        super(MMMenus.FACTORY_ORDERS_MENU.get(), containerId, inventory, pos, 0);
         this.level = inventory.player.level();
         this.blockEntity = (MiniMeFactoryBlockEntity) this.level.getBlockEntity(pos);
-
-        this.addSlot(new FactoryPatternSlot(blockEntity.getPatternHandler(), blockEntity.getPatternHandler()::set,
-                0, PATTERN_SLOT_X, PATTERN_SLOT_Y));
 
         this.addDataSlot(new DataSlot() {
             @Override
@@ -61,24 +52,12 @@ public class FactoryOrdersMenu extends SimpleAbstractContainerMenu {
         return status;
     }
 
-    @Override
-    public void broadcastChanges() {
-        if (!level.isClientSide()) {
-            ItemStack dropped = ItemUtil.getStack(blockEntity.getPatternHandler(), 0);
-            if (!dropped.isEmpty()) {
-                blockEntity.addOrder(dropped);
-                blockEntity.getPatternHandler().set(0, ItemResource.EMPTY, 0);
-            }
-        }
-        super.broadcastChanges();
-    }
-
-    private void addOrder(ItemStack stack) {
-        if (!level.isClientSide()) blockEntity.addOrder(stack);
-    }
-
     public static int amountButtonId(int index, int amount) {
         return BUTTON_AMOUNT_BASE + index * AMOUNT_RANGE + amount;
+    }
+
+    public static int moveButtonId(int from, int to) {
+        return BUTTON_MOVE_BASE + from * MOVE_RANGE + to;
     }
 
     @Override
@@ -90,12 +69,13 @@ public class FactoryOrdersMenu extends SimpleAbstractContainerMenu {
             blockEntity.setAmount(encoded / AMOUNT_RANGE, encoded % AMOUNT_RANGE);
             return true;
         }
-        if (id >= BUTTON_DOWN_BASE) {
-            blockEntity.moveOrder(id - BUTTON_DOWN_BASE, 1);
+        if (id == BUTTON_ADD_CARRIED) {
+            blockEntity.addOrder(getCarried());
             return true;
         }
-        if (id >= BUTTON_UP_BASE) {
-            blockEntity.moveOrder(id - BUTTON_UP_BASE, -1);
+        if (id >= BUTTON_MOVE_BASE) {
+            int encoded = id - BUTTON_MOVE_BASE;
+            blockEntity.moveOrderTo(encoded / MOVE_RANGE, encoded % MOVE_RANGE);
             return true;
         }
         if (id >= BUTTON_REMOVE_BASE) {
@@ -106,20 +86,9 @@ public class FactoryOrdersMenu extends SimpleAbstractContainerMenu {
     }
 
     @Override
-    public void clicked(int slotId, int button, ContainerInput input, Player player) {
-        if (slotId == PATTERN_SLOT_INDEX) {
-            if (input == ContainerInput.PICKUP || input == ContainerInput.SWAP || input == ContainerInput.CLONE) {
-                addOrder(getCarried());
-            }
-            return;
-        }
-        super.clicked(slotId, button, input, player);
-    }
-
-    @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        if (index < PATTERN_SLOT_INDEX) {
-            addOrder(this.slots.get(index).getItem());
+        if (!level.isClientSide() && index >= 0 && index < this.slots.size()) {
+            blockEntity.addOrder(this.slots.get(index).getItem());
         }
         return ItemStack.EMPTY;
     }
