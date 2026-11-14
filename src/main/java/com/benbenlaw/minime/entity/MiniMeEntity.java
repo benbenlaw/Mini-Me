@@ -12,6 +12,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -712,6 +713,18 @@ public class MiniMeEntity extends PathfinderMob implements HasCustomInventoryScr
         builder.define(DATA_TASKS, defaultTasks());
         for (MiniMeSetting setting : MiniMeSetting.values()) {
             builder.define(SETTING_DATA.get(setting), setting.defaultValue());
+        }
+    }
+
+    @Override
+    public void die(@NotNull DamageSource source) {
+        Component message = this.getCombatTracker().getDeathMessage();
+        super.die(source);
+        if (this.isDeadOrDying() && this.level() instanceof ServerLevel serverLevel
+                && serverLevel.getGameRules().get(GameRules.SHOW_DEATH_MESSAGES)
+                && ownerUuid != null
+                && serverLevel.getServer().getPlayerList().getPlayer(ownerUuid) instanceof ServerPlayer owner) {
+            owner.sendSystemMessage(message);
         }
     }
 

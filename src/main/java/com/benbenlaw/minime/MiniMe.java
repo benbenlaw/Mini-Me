@@ -1,5 +1,6 @@
 package com.benbenlaw.minime;
 
+import com.benbenlaw.minime.config.MiniMeClientConfig;
 import com.benbenlaw.minime.config.MiniMeConfig;
 import com.benbenlaw.minime.datamaps.MMDataMaps;
 import com.benbenlaw.minime.entity.MMEntities;
@@ -11,7 +12,6 @@ import com.benbenlaw.minime.item.MMDataComponents;
 import com.benbenlaw.minime.item.MMItems;
 import com.benbenlaw.minime.screen.InstructionDeskScreen;
 import com.benbenlaw.minime.screen.MMMenus;
-import com.benbenlaw.minime.screen.FactoryOrdersScreen;
 import com.benbenlaw.minime.screen.MiniMeFactoryScreen;
 import com.benbenlaw.minime.screen.MiniMeScreen;
 import net.minecraft.resources.Identifier;
@@ -36,6 +36,7 @@ public class MiniMe {
 
     public MiniMe(final IEventBus eventBus, final ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, MiniMeConfig.SPEC, "bbl/minime-common.toml");
+        modContainer.registerConfig(ModConfig.Type.CLIENT, MiniMeClientConfig.SPEC, "bbl/minime-client.toml");
 
         MMEntities.ENTITIES.register(eventBus);
         MMItems.ITEMS.register(eventBus);
@@ -63,7 +64,6 @@ public class MiniMe {
             event.register(MMMenus.MINI_ME_MENU.get(), MiniMeScreen::new);
             event.register(MMMenus.INSTRUCTION_DESK_MENU.get(), InstructionDeskScreen::new);
             event.register(MMMenus.FACTORY_MENU.get(), MiniMeFactoryScreen::new);
-            event.register(MMMenus.FACTORY_ORDERS_MENU.get(), FactoryOrdersScreen::new);
         }
     }
 

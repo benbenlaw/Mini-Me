@@ -10,6 +10,7 @@ import com.benbenlaw.minime.factory.FactoryRegistry;
 import com.benbenlaw.minime.factory.FactoryStatus;
 import com.benbenlaw.minime.screen.MiniMeFactoryMenu;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.Containers;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -42,7 +43,7 @@ public class MiniMeFactoryBlockEntity extends SyncableBlockEntity implements Men
     private static final long WORKER_TIMEOUT = 40;
     private static final long STATUS_TIMEOUT = 60;
 
-    public static final int MAX_ORDERS = 24;
+    public static final int MAX_ORDERS = 32;
     public static final int MAX_STOCK = 2048;
     public static final int DEFAULT_STOCK = 16;
 
@@ -58,12 +59,36 @@ public class MiniMeFactoryBlockEntity extends SyncableBlockEntity implements Men
     private String activeLabel = "";
     private boolean showingArea;
 
+    private final ItemStack[] grid = {ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY,
+            ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY};
+
     private final List<Order> orders = new ArrayList<>();
     private List<Integer> stocks = new ArrayList<>();
     private final Map<Integer, List<FactoryPlan>> planCache = new HashMap<>();
 
     public MiniMeFactoryBlockEntity(BlockPos pos, BlockState state) {
         super(MMBlockEntities.MINI_ME_FACTORY.get(), pos, state);
+    }
+
+    public ItemStack getGridItem(int index) {
+        return grid[index];
+    }
+
+    public void setGridItem(int index, ItemStack stack) {
+        if (ItemStack.matches(grid[index], stack)) return;
+        grid[index] = stack.copy();
+        setChanged();
+    }
+
+    @Override
+    public void preRemoveSideEffects(BlockPos pos, BlockState state) {
+        if (level != null) {
+            for (int i = 0; i < grid.length; i++) {
+                if (!grid[i].isEmpty()) Containers.dropItemStack(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, grid[i]);
+                grid[i] = ItemStack.EMPTY;
+            }
+        }
+        super.preRemoveSideEffects(pos, state);
     }
 
     public ItemStacksResourceHandler getPatternHandler() {
@@ -249,6 +274,9 @@ public class MiniMeFactoryBlockEntity extends SyncableBlockEntity implements Men
             output.putInt("orderAmount" + i, orders.get(i).amount());
             output.putInt("orderStock" + i, stockOf(i));
         }
+        for (int i = 0; i < grid.length; i++) {
+            if (!grid[i].isEmpty()) output.store("grid" + i, ItemStack.OPTIONAL_CODEC, grid[i]);
+        }
         output.putString("activeLabel", activeLabel);
         output.putBoolean("showArea", showingArea);
         super.saveAdditional(output);
@@ -267,6 +295,9 @@ public class MiniMeFactoryBlockEntity extends SyncableBlockEntity implements Men
             loadedStocks.add(input.getIntOr("orderStock" + i, 0));
         }
         stocks = loadedStocks;
+        for (int i = 0; i < grid.length; i++) {
+            grid[i] = input.read("grid" + i, ItemStack.OPTIONAL_CODEC).orElse(ItemStack.EMPTY);
+        }
         activeLabel = input.getStringOr("activeLabel", "");
         showingArea = input.getBooleanOr("showArea", false);
         super.loadAdditional(input);

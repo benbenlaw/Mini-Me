@@ -20,8 +20,6 @@ public class MMMenus {
     public static final DeferredHolder<MenuType<?>, MenuType<MiniMeFactoryMenu>> FACTORY_MENU =
             MENUS.register("mini_me_factory_menu", () -> IMenuTypeExtension.create(MiniMeFactoryMenu::new));
 
-    public static final DeferredHolder<MenuType<?>, MenuType<FactoryOrdersMenu>> FACTORY_ORDERS_MENU =
-            MENUS.register("mini_me_factory_orders_menu", () -> IMenuTypeExtension.create(FactoryOrdersMenu::new));
 
     private static <T extends AbstractContainerMenu> DeferredHolder<MenuType<?>, MenuType<T>> registerMenuType(String name, IContainerFactory<T> factory) {
         return MENUS.register(name, () -> IMenuTypeExtension.create(factory));

@@ -2,6 +2,7 @@ package com.benbenlaw.minime.screen;
 
 import com.benbenlaw.minime.block.MMBlocks;
 import com.benbenlaw.minime.block.entity.MiniMeFactoryBlockEntity;
+import com.benbenlaw.minime.factory.FactoryRecipeFill;
 import com.benbenlaw.minime.factory.FactoryStorage;
 import com.benbenlaw.minime.factory.ViewEntry;
 import com.benbenlaw.minime.network.packet.FactoryViewPacket;
@@ -18,6 +19,7 @@ import net.minecraft.world.inventory.AbstractCraftingMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.CraftingContainer;
+import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.RecipeBookType;
 import net.minecraft.world.inventory.ResultContainer;
@@ -37,6 +39,12 @@ import java.util.Optional;
 
 public class MiniMeFactoryMenu extends AbstractCraftingMenu {
     public static final int BUTTON_TOGGLE_AREA = 0;
+    public static final int BUTTON_REMOVE_BASE = 1000;
+    public static final int BUTTON_MOVE_BASE = 2000;
+    public static final int BUTTON_ADD_CARRIED = 4000;
+    public static final int BUTTON_AMOUNT_BASE = 100000;
+    public static final int AMOUNT_RANGE = 4096;
+    public static final int MOVE_RANGE = 32;
     public static final int RESULT_X = 124;
     public static final int RESULT_Y = 114;
     public static final int GRID_X = 30;
@@ -55,6 +63,8 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
     private final Level level;
     private final ContainerLevelAccess access;
     private boolean placingRecipe;
+    private boolean refreshResult;
+    private int status;
 
     private Map<ItemResource, Long> lastSent;
     private int syncTimer;
@@ -75,6 +85,25 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
         this.addResultSlot(this.player, RESULT_X, RESULT_Y);
         this.addCraftingGridSlots(GRID_X, GRID_Y);
         this.addStandardInventorySlots(inventory, INVENTORY_X, INVENTORY_Y);
+
+        this.addDataSlot(new DataSlot() {
+            @Override
+            public int get() {
+                return level.isClientSide() ? status : blockEntity.getStatusCode();
+            }
+
+            @Override
+            public void set(int value) {
+                status = value;
+            }
+        });
+
+        if (!level.isClientSide()) {
+            placingRecipe = true;
+            for (int i = 0; i < 9; i++) craftSlots.setItem(i, blockEntity.getGridItem(i).copy());
+            placingRecipe = false;
+            refreshResult = true;
+        }
     }
 
     public MiniMeFactoryBlockEntity getBlockEntity() {
@@ -104,6 +133,32 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
             ItemStack pulled = FactoryStorage.extract(level, blockEntity, before[i], 1);
             if (!pulled.isEmpty()) craftSlots.setItem(i, pulled);
         }
+        forceSync = true;
+    }
+
+    public void fillFromStorage(ServerPlayer filler, List<FactoryRecipeFill.Cell> cells, boolean max) {
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = craftSlots.removeItemNoUpdate(i);
+            if (stack.isEmpty()) continue;
+
+            int left = FactoryStorage.insert(level, blockEntity, stack);
+            if (left > 0) {
+                ItemStack rest = stack.copyWithCount(left);
+                if (!filler.getInventory().add(rest)) filler.drop(rest, false);
+            }
+        }
+
+        Map<ItemResource, Long> totals = FactoryStorage.aggregate(level, blockEntity);
+        FactoryRecipeFill.Result result = FactoryRecipeFill.plan(cells, stack -> totals.getOrDefault(ItemResource.of(stack), 0L), max);
+        if (result.missing().isEmpty()) {
+            result.picks().forEach((slot, key) -> {
+                if (slot < 0 || slot >= 9) return;
+                ItemStack taken = FactoryStorage.extract(level, blockEntity, key, result.sets());
+                if (!taken.isEmpty()) craftSlots.setItem(slot, taken);
+            });
+        }
+
+        slotsChanged(craftSlots);
         forceSync = true;
     }
 
@@ -140,6 +195,13 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
 
     @Override
     public void broadcastChanges() {
+        if (!level.isClientSide()) {
+            if (refreshResult) {
+                refreshResult = false;
+                slotsChanged(craftSlots);
+            }
+            for (int i = 0; i < 9; i++) blockEntity.setGridItem(i, craftSlots.getItem(i));
+        }
         super.broadcastChanges();
         if (level.isClientSide() || !(player instanceof ServerPlayer serverPlayer)) return;
 
@@ -206,19 +268,30 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
     }
 
     private void craftOneStack(Player clicker) {
-        ItemStack first = slots.get(0).getItem();
+        if (level.isClientSide() || !(level instanceof ServerLevel serverLevel)) return;
+
+        Slot slot = slots.get(0);
+        ItemStack first = slot.getItem().copy();
         if (first.isEmpty()) return;
 
         int limit = first.getMaxStackSize();
         int made = 0;
-        while (true) {
-            ItemStack result = slots.get(0).getItem();
+        while (made < limit) {
+            ItemStack result = slot.getItem();
             if (result.isEmpty() || !ItemStack.isSameItemSameComponents(result, first) || made + result.getCount() > limit) break;
 
-            ItemStack moved = quickMoveStack(clicker, 0);
-            if (moved.isEmpty()) break;
-            made += moved.getCount();
+            ItemStack[] before = snapshotGrid();
+            ItemStack crafted = result.copy();
+            slot.onQuickCraft(ItemStack.EMPTY, crafted);
+            slot.onTake(clicker, crafted);
+            refill(before);
+            slotChangedCraftingGrid(this, serverLevel, player, craftSlots, resultSlots, null);
+
+            made += crafted.getCount();
+            clicker.getInventory().add(crafted);
+            if (!crafted.isEmpty()) clicker.drop(crafted, false);
         }
+        forceSync = true;
     }
 
     @Override
@@ -226,25 +299,48 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
         super.removed(leaving);
         if (level.isClientSide()) return;
 
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = craftSlots.removeItemNoUpdate(i);
-            if (stack.isEmpty()) continue;
-
-            int left = FactoryStorage.insert(level, blockEntity, stack);
-            if (left > 0) {
-                ItemStack rest = stack.copyWithCount(left);
-                if (!leaving.getInventory().add(rest)) leaving.drop(rest, false);
-            }
-        }
+        for (int i = 0; i < 9; i++) blockEntity.setGridItem(i, craftSlots.getItem(i));
     }
 
     @Override
     public boolean clickMenuButton(Player user, int id) {
-        if (id == BUTTON_TOGGLE_AREA && !level.isClientSide()) {
+        if (level.isClientSide()) return false;
+
+        if (id >= BUTTON_AMOUNT_BASE) {
+            int encoded = id - BUTTON_AMOUNT_BASE;
+            blockEntity.setAmount(encoded / AMOUNT_RANGE, encoded % AMOUNT_RANGE);
+            return true;
+        }
+        if (id == BUTTON_ADD_CARRIED) {
+            blockEntity.addOrder(getCarried());
+            return true;
+        }
+        if (id >= BUTTON_MOVE_BASE) {
+            int encoded = id - BUTTON_MOVE_BASE;
+            blockEntity.moveOrderTo(encoded / MOVE_RANGE, encoded % MOVE_RANGE);
+            return true;
+        }
+        if (id >= BUTTON_REMOVE_BASE) {
+            blockEntity.removeOrder(id - BUTTON_REMOVE_BASE);
+            return true;
+        }
+        if (id == BUTTON_TOGGLE_AREA) {
             blockEntity.toggleShowingArea();
             return true;
         }
         return false;
+    }
+
+    public static int amountButtonId(int index, int amount) {
+        return BUTTON_AMOUNT_BASE + index * AMOUNT_RANGE + amount;
+    }
+
+    public static int moveButtonId(int from, int to) {
+        return BUTTON_MOVE_BASE + from * MOVE_RANGE + to;
+    }
+
+    public int getStatus() {
+        return status;
     }
 
     @Override
@@ -273,6 +369,12 @@ public class MiniMeFactoryMenu extends AbstractCraftingMenu {
             } else {
                 return ItemStack.EMPTY;
             }
+        } else if (slotIndex >= GRID_START && slotIndex < GRID_END) {
+            if (level.isClientSide()) return ItemStack.EMPTY;
+
+            int left = FactoryStorage.insert(level, blockEntity, stack);
+            stack.setCount(left);
+            forceSync = true;
         } else if (!this.moveItemStackTo(stack, INVENTORY_START, INVENTORY_END, false)) {
             return ItemStack.EMPTY;
         }
